@@ -1,0 +1,54 @@
+name: Setup Code Signing (Run Once)
+
+# Run this workflow ONE TIME to generate and store your
+# App Store certificates and provisioning profiles via Fastlane Match.
+# After it succeeds, use the Deploy to TestFlight workflow for all future builds.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-signing:
+    name: Initialize Match & Create Certificates
+    runs-on: macos-15
+
+    environment: testflight
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: LLMChat
+
+      - name: Install Fastlane
+        working-directory: LLMChat
+        run: bundle install
+
+      - name: Set up SSH for Match
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
+
+      - name: Generate certificates and provisioning profiles
+        working-directory: LLMChat
+        env:
+          APP_IDENTIFIER: ${{ secrets.APP_IDENTIFIER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_STORE_TEAM_ID: ${{ secrets.APP_STORE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+        run: bundle exec fastlane setup_signing

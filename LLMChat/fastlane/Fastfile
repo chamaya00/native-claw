@@ -1,0 +1,141 @@
+default_platform(:ios)
+
+platform :ios do
+
+  # ───────────────────────────────────────────
+  # Generate .xcodeproj from project.yml
+  # ───────────────────────────────────────────
+  desc "Generate Xcode project using XcodeGen"
+  lane :generate_project do
+    Dir.chdir("..") do
+      sh("xcodegen generate --spec project.yml")
+    end
+  end
+
+  # ───────────────────────────────────────────
+  # Build the app (no signing required for CI)
+  # ───────────────────────────────────────────
+  desc "Build the app"
+  lane :build do
+    generate_project
+
+    gym(
+      project: "LLMChat.xcodeproj",
+      scheme: "LLMChat",
+      configuration: "Debug",
+      sdk: "iphonesimulator",
+      destination: "generic/platform=iOS Simulator",
+      skip_package_ipa: true,
+      skip_archive: true,
+      clean: true,
+      xcargs: "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
+    )
+  end
+
+  # ───────────────────────────────────────────
+  # Run unit tests
+  # ───────────────────────────────────────────
+  desc "Run tests"
+  lane :test do
+    generate_project
+
+    scan(
+      project: "LLMChat.xcodeproj",
+      scheme: "LLMChat",
+      device: "iPhone 16",
+      clean: true
+    )
+  end
+
+  # ───────────────────────────────────────────
+  # One-time setup: create certs & profiles
+  # ───────────────────────────────────────────
+  desc "Initialize Match and create App Store certificates and provisioning profiles"
+  lane :setup_signing do
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: false
+    )
+
+    match(
+      type: "appstore",
+      app_identifier: ENV["APP_IDENTIFIER"],
+      readonly: false,
+      force_for_new_devices: true
+    )
+  end
+
+  # ───────────────────────────────────────────
+  # Upload to TestFlight
+  # ───────────────────────────────────────────
+  desc "Upload to TestFlight"
+  lane :beta do
+    # Set up App Store Connect API key for authentication
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: false
+    )
+
+    # Create a dedicated CI keychain so codesign never blocks waiting for
+    # interactive keychain unlock (the default system keychain requires UI).
+    keychain_name = "ci-signing.keychain"
+    keychain_password = SecureRandom.hex(20)
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+      lock_when_sleeps: false
+    )
+
+    # Sync certificates and provisioning profiles via match into the CI keychain
+    match(
+      type: "appstore",
+      app_identifier: ENV["APP_IDENTIFIER"],
+      readonly: true,
+      keychain_name: keychain_name,
+      keychain_password: keychain_password
+    )
+
+    generate_project
+
+    # Increment build number using latest TestFlight build
+    increment_build_number(
+      build_number: latest_testflight_build_number + 1,
+      xcodeproj: "LLMChat.xcodeproj"
+    )
+
+    # Configure manual signing to use the match-provisioned profiles
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "LLMChat.xcodeproj",
+      team_id: ENV["APP_STORE_TEAM_ID"],
+      code_sign_identity: "iPhone Distribution",
+      profile_name: ENV["sigh_#{ENV['APP_IDENTIFIER']}_appstore_profile-name"]
+    )
+
+    gym(
+      project: "LLMChat.xcodeproj",
+      scheme: "LLMChat",
+      configuration: "Release",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "build",
+      xcargs: "DEVELOPMENT_TEAM='#{ENV['APP_STORE_TEAM_ID']}'"
+    )
+
+    pilot(
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: ENV["RELEASE_NOTES"] || "Bug fixes and improvements"
+    )
+  ensure
+    # Remove the temporary keychain regardless of success or failure
+    delete_keychain(name: keychain_name) if keychain_name
+  end
+end

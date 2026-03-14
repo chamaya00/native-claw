@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build LLMChat (Xcode 26 / FoundationModels SDK)
+    # macos-15 runners ship with Xcode 16 by default; Xcode 26 must be
+    # pre-installed or selected via the path below.
+    # Check available versions at:
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md
+    runs-on: macos-15
+
+    env:
+      # Default bundle ID for CI builds (no signing needed for simulator)
+      APP_IDENTIFIER: com.charlesamaya.llmchat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # Select Xcode 26 so that `#if canImport(FoundationModels)` is
+      # true at compile time and the real FoundationModels code path
+      # is compiled (not the STUB). The simulator will still report
+      # LanguageModelSession.isSupported == false at runtime — actual
+      # on-device inference requires physical hardware with Apple
+      # Intelligence. CI validates compilation only.
+      # ---------------------------------------------------------------
+      - name: Select Xcode 26
+        run: |
+          # Dynamically pick the latest Xcode 26.x installed on the runner.
+          # Matches bare Xcode_26.app as well as versioned paths like
+          # Xcode_26.3.0.app, sorted by version so the highest wins.
+          XCODE26=$(ls /Applications/ \
+            | grep -E '^Xcode_26(\.[0-9]+)*\.app$' \
+            | sort -t. -k1,1 -k2,2n -k3,3n -k4,4n \
+            | tail -1)
+
+          if [ -z "$XCODE26" ]; then
+            echo "::error::No Xcode 26.x installation found in /Applications/"
+            echo "Available Xcode installations:"
+            ls /Applications/ | grep -i xcode
+            exit 1
+          fi
+
+          echo "Using $XCODE26"
+          sudo xcode-select -s "/Applications/$XCODE26/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: LLMChat
+
+      - name: Install Fastlane
+        working-directory: LLMChat
+        run: bundle install
+
+      - name: Generate Xcode project
+        working-directory: LLMChat
+        run: xcodegen generate --spec project.yml
+
+      # Build for iOS Simulator (no signing required). With Xcode 26 selected
+      # above, canImport(FoundationModels) is true so the real API surface is
+      # compiled. Any type errors or API mismatches in LLMService.swift will
+      # surface here rather than silently falling through to the STUB path.
+      - name: Build for iOS Simulator (Debug)
+        working-directory: LLMChat
+        run: |
+          xcodebuild build \
+            -project LLMChat.xcodeproj \
+            -scheme LLMChat \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            | bundle exec xcpretty
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ~/Library/Logs/gym/
+            /tmp/*.log

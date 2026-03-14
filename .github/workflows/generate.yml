@@ -1,0 +1,45 @@
+name: Generate Xcode Project
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "LLMChat/project.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    name: Generate .xcodeproj
+    runs-on: macos-15
+
+    env:
+      # Default values for XcodeGen env var expansion in project.yml
+      APP_IDENTIFIER: com.charlesamaya.llmchat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: LLMChat
+        run: xcodegen generate --spec project.yml
+
+      - name: Commit generated project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add LLMChat/LLMChat.xcodeproj
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: regenerate LLMChat.xcodeproj from project.yml [skip ci]"
+            git push origin main
+          fi

@@ -1,0 +1,4 @@
+app_identifier(ENV["APP_IDENTIFIER"] || "com.example.llmchat")
+apple_id(ENV["APPLE_ID"])
+team_id(ENV["APP_STORE_TEAM_ID"])
+itc_team_id(ENV["ITC_TEAM_ID"])
