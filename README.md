@@ -122,7 +122,20 @@ GitHub Actions runs three workflows automatically:
 - **build.yml** — triggered on every push; builds the app with Fastlane
 - **deploy.yml** — triggered manually or on tag push; uploads a signed build to TestFlight
 
-Signing secrets (`APP_STORE_CONNECT_API_KEY`, `MATCH_PASSWORD`) must be configured in the repository settings before deploy will succeed.
+The following secrets must be configured in the **`testflight` environment** (Settings → Environments → testflight) before deploy will succeed:
+
+| Secret | Description |
+|--------|-------------|
+| `APP_IDENTIFIER` | App bundle ID (e.g. `com.example.LLMChat`) |
+| `APPLE_ID` | Apple ID email used for App Store Connect |
+| `APP_STORE_TEAM_ID` | Apple Developer team ID |
+| `ITC_TEAM_ID` | App Store Connect team ID (may differ from `APP_STORE_TEAM_ID`) |
+| `ASC_KEY_ID` | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | App Store Connect API issuer ID |
+| `ASC_KEY_CONTENT` | App Store Connect API private key content (`.p8` file contents) |
+| `MATCH_PASSWORD` | Encryption password for the Fastlane Match certificates repository |
+| `MATCH_GIT_URL` | SSH URL of the private git repo storing Match certificates |
+| `MATCH_DEPLOY_KEY` | SSH private key with read access to the `MATCH_GIT_URL` repository |
 
 ## Requirements
 

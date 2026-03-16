@@ -70,6 +70,35 @@ jobs:
         working-directory: LLMChat
         run: bundle install
 
+      - name: Validate required secrets
+        env:
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          APP_IDENTIFIER: ${{ secrets.APP_IDENTIFIER }}
+          APP_STORE_TEAM_ID: ${{ secrets.APP_STORE_TEAM_ID }}
+        run: |
+          missing=()
+          [ -z "$MATCH_DEPLOY_KEY" ]   && missing+=("MATCH_DEPLOY_KEY")
+          [ -z "$ASC_KEY_ID" ]         && missing+=("ASC_KEY_ID")
+          [ -z "$ASC_ISSUER_ID" ]      && missing+=("ASC_ISSUER_ID")
+          [ -z "$ASC_KEY_CONTENT" ]    && missing+=("ASC_KEY_CONTENT")
+          [ -z "$MATCH_PASSWORD" ]     && missing+=("MATCH_PASSWORD")
+          [ -z "$MATCH_GIT_URL" ]      && missing+=("MATCH_GIT_URL")
+          [ -z "$APP_IDENTIFIER" ]     && missing+=("APP_IDENTIFIER")
+          [ -z "$APP_STORE_TEAM_ID" ]  && missing+=("APP_STORE_TEAM_ID")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::The following secrets are missing from the 'testflight' environment:"
+            for s in "${missing[@]}"; do
+              echo "::error::  - $s"
+            done
+            echo "::error::Go to Settings → Environments → testflight → Add secret"
+            exit 1
+          fi
+
       - name: Set up SSH for Match
         uses: webfactory/ssh-agent@v0.9.0
         with:
