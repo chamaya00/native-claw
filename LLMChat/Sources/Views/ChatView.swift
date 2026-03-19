@@ -299,12 +299,17 @@ struct ChatView: View {
             let preview = String(text.prefix(500))
             let filename = url.lastPathComponent
 
+            // Copy file into app's Documents directory
+            let destFilename = "\(UUID().uuidString)_\(filename)"
+            let destURL = URL.documentsDirectory.appending(path: destFilename)
+            let data = try Data(contentsOf: url)
+            try data.write(to: destURL)
+
             let context = ModelContext(modelContext.container)
-            let file = ImportedFile(filename: filename, contentPreview: preview, fullText: text)
+            let file = ImportedFile(filename: filename, contentPreview: preview, relativePath: destFilename)
             context.insert(file)
             try context.save()
 
-            // Confirm in chat
             let confirmMsg = ChatMessage(
                 role: "assistant",
                 content: "I've loaded **\(filename)**. I can reference it when relevant."

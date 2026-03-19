@@ -10,7 +10,6 @@ struct ClawApp: App {
             container = try ModelContainer(for:
                 Persona.self,
                 MemoryNote.self,
-                TopicProfile.self,
                 ImportedFile.self,
                 Conversation.self,
                 Message.self

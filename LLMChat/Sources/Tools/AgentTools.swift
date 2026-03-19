@@ -298,26 +298,35 @@ struct ReadImportedFileTool: Tool {
         await onEvent(.toolStarted("Reading file…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
-        let result: String = await MainActor.run {
+        let (filename, relativePath): (String, String) = await MainActor.run {
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<ImportedFile>(
                 predicate: #Predicate { $0.id == fileID }
             )
             guard let file = (try? context.fetch(descriptor))?.first else {
-                return "File not found with ID \(arguments.id)."
+                return ("", "")
             }
-            // Update last accessed
             file.lastAccessedAt = .now
             try? context.save()
-
-            let text = file.fullText
-            if text.count > Self.maxChars {
-                let truncated = String(text.prefix(Self.maxChars))
-                return "Filename: \(file.filename)\n[TRUNCATED — showing first \(Self.maxChars) of \(text.count) chars]\n\n\(truncated)"
-            }
-            return "Filename: \(file.filename)\n\n\(text)"
+            return (file.filename, file.relativePath)
         }
-        return result
+
+        guard !relativePath.isEmpty else {
+            return "File not found with ID \(arguments.id)."
+        }
+
+        let fileURL = URL.documentsDirectory.appending(path: relativePath)
+        let text = (try? String(contentsOf: fileURL, encoding: .utf8))
+            ?? (try? String(contentsOf: fileURL, encoding: .isoLatin1))
+            ?? ""
+
+        if text.isEmpty {
+            return "Could not read file '\(filename)' from disk."
+        }
+        if text.count > Self.maxChars {
+            return "Filename: \(filename)\n[TRUNCATED — showing first \(Self.maxChars) of \(text.count) chars]\n\n\(String(text.prefix(Self.maxChars)))"
+        }
+        return "Filename: \(filename)\n\n\(text)"
     }
 }
 
