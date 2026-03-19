@@ -42,9 +42,9 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(spacing: 4) {
-            Text("◈ Meet Claw")
+            Text("◈ A blank slate")
                 .font(.title3.weight(.semibold))
-            Text("Your private AI agent. Let's set it up — just talk.")
+            Text("Name it. Shape its personality. Make it yours.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -117,7 +117,7 @@ struct OnboardingView: View {
     private func personaConfirmBar(preview: OnboardingViewModel.PersonaPreview) -> some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Your Claw")
+                Text(preview.name)
                     .font(.subheadline.weight(.semibold))
 
                 Group {
