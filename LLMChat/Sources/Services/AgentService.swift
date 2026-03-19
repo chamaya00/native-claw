@@ -118,8 +118,8 @@ final class AgentService {
             // Condense: recreate session with fresh context (transcript exceeded limit)
             // NOTE: per CLAUDE.md, we rebuild from persona + recent memories
             try await initializeSession()
-            guard let session else { throw AgentError.sessionNotInitialized }
-            let response = try await session.respond(to: text)
+            guard let newSession = self.session else { throw AgentError.sessionNotInitialized }
+            let response = try await newSession.respond(to: text)
             return response.content
         }
 #else

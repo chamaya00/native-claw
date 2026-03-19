@@ -20,7 +20,7 @@ struct SearchMemoryTool: Tool {
     let container: ModelContainer
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         await onEvent(.toolStarted("Searching memory…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
@@ -30,7 +30,7 @@ struct SearchMemoryTool: Tool {
         }
 
         if results.isEmpty {
-            return ToolOutput("No memory notes found matching '\(arguments.query)'.")
+            return "No memory notes found matching '\(arguments.query)'."
         }
 
         let formatted = results.map { note in
@@ -43,7 +43,7 @@ struct SearchMemoryTool: Tool {
             """
         }.joined(separator: "\n")
 
-        return ToolOutput("Memory search results for '\(arguments.query)':\n\(formatted)")
+        return "Memory search results for '\(arguments.query)':\n\(formatted)"
     }
 }
 
@@ -74,7 +74,7 @@ struct SaveMemoryNoteTool: Tool {
 
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         let draft = MemoryNoteDraft(
             title: arguments.title,
             summary: arguments.summary,
@@ -84,13 +84,13 @@ struct SaveMemoryNoteTool: Tool {
         )
         await onEvent(.pendingMemoryNote(draft))
 
-        return ToolOutput("""
+        return """
         Memory note proposal ready for confirmation.
         Title: \(draft.title)
         Summary: \(draft.summary)
         Topics: \(draft.topics.joined(separator: ", "))
         A confirmation card will appear in the chat. Let the user know they can save or discard it.
-        """)
+        """
     }
 }
 
@@ -122,9 +122,9 @@ struct UpdateMemoryNoteTool: Tool {
     let container: ModelContainer
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         guard let noteID = UUID(uuidString: arguments.id) else {
-            return ToolOutput("Error: invalid UUID '\(arguments.id)'.")
+            return "Error: invalid UUID '\(arguments.id)'."
         }
 
         let originalTitle: String = try await MainActor.run {
@@ -145,11 +145,11 @@ struct UpdateMemoryNoteTool: Tool {
         )
         await onEvent(.pendingMemoryUpdate(draft))
 
-        return ToolOutput("""
+        return """
         Memory update proposal ready for confirmation.
         Note: \(originalTitle) (ID: \(arguments.id))
         A confirmation card will appear in the chat.
-        """)
+        """
     }
 }
 
@@ -169,7 +169,7 @@ struct ReadPersonaTool: Tool {
     let container: ModelContainer
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         await onEvent(.toolStarted("Reading persona…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
@@ -187,7 +187,7 @@ struct ReadPersonaTool: Tool {
             Expertise areas: \(persona.expertiseAreas.joined(separator: ", "))
             """
         }
-        return ToolOutput(result)
+        return result
     }
 }
 
@@ -215,7 +215,7 @@ struct ProposePersonaUpdateTool: Tool {
 
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         let draft = PersonaUpdateDraft(
             proposedPurpose: arguments.proposedPurpose.isEmpty ? nil : arguments.proposedPurpose,
             proposedTone: arguments.proposedTone.isEmpty ? nil : arguments.proposedTone,
@@ -224,10 +224,10 @@ struct ProposePersonaUpdateTool: Tool {
         )
         await onEvent(.pendingPersonaUpdate(draft))
 
-        return ToolOutput("""
+        return """
         Persona update proposal ready for confirmation.
         A confirmation card will appear in the chat.
-        """)
+        """
     }
 }
 
@@ -247,7 +247,7 @@ struct ListImportedFilesTool: Tool {
     let container: ModelContainer
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         await onEvent(.toolStarted("Listing files…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
@@ -264,7 +264,7 @@ struct ListImportedFilesTool: Tool {
                 "- ID: \(file.id)\n  Name: \(file.filename)\n  Imported: \(file.importedAt.formatted(date: .abbreviated, time: .omitted))\n  Preview: \(file.contentPreview.prefix(100))…"
             }.joined(separator: "\n")
         }
-        return ToolOutput(result)
+        return result
     }
 }
 
@@ -286,9 +286,9 @@ struct ReadImportedFileTool: Tool {
     let container: ModelContainer
     let onEvent: @MainActor @Sendable (ToolEvent) -> Void
 
-    func call(arguments: Arguments) async throws -> ToolOutput {
+    func call(arguments: Arguments) async throws -> String {
         guard let fileID = UUID(uuidString: arguments.id) else {
-            return ToolOutput("Error: invalid UUID '\(arguments.id)'.")
+            return "Error: invalid UUID '\(arguments.id)'."
         }
 
         await onEvent(.toolStarted("Reading file…"))
@@ -313,7 +313,7 @@ struct ReadImportedFileTool: Tool {
             }
             return "Filename: \(file.filename)\n\n\(text)"
         }
-        return ToolOutput(result)
+        return result
     }
 }
 
