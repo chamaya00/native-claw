@@ -102,6 +102,9 @@ final class AgentService {
         session = nil
         onboardingSession = nil
 #endif
+        pendingMemoryNote = nil
+        pendingMemoryUpdate = nil
+        pendingPersonaUpdate = nil
     }
 
     // MARK: - Chat

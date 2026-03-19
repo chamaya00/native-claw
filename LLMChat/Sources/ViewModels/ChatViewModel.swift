@@ -31,6 +31,7 @@ final class ChatViewModel {
         do {
             try await agentService.initializeSession()
             createNewConversation()
+            pruneOldConversations()
         } catch {
             self.error = error.localizedDescription
         }
@@ -140,7 +141,20 @@ final class ChatViewModel {
         messages = []
         agentService.invalidateSession()
         createNewConversation()
+        pruneOldConversations()
         Task { await startSession() }
+    }
+
+    private func pruneOldConversations(keeping limit: Int = 10) {
+        let context = ModelContext(container)
+        let descriptor = FetchDescriptor<Conversation>(
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        guard let all = try? context.fetch(descriptor), all.count > limit else { return }
+        for conv in all.dropFirst(limit) {
+            context.delete(conv)
+        }
+        try? context.save()
     }
 
     private func createNewConversation() {

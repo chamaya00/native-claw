@@ -62,36 +62,11 @@ final class MemoryNote {
 }
 
 @Model
-final class TopicProfile {
-    var id: UUID
-    var topicName: String
-    var interestScore: Float
-    var familiarityScore: Float
-    var preferredDepth: String  // "surface" | "working" | "deep"
-    var lastUpdated: Date
-
-    init(
-        id: UUID = .init(),
-        topicName: String,
-        interestScore: Float = 0.5,
-        familiarityScore: Float = 0.5,
-        preferredDepth: String = "working"
-    ) {
-        self.id = id
-        self.topicName = topicName
-        self.interestScore = interestScore
-        self.familiarityScore = familiarityScore
-        self.preferredDepth = preferredDepth
-        self.lastUpdated = .now
-    }
-}
-
-@Model
 final class ImportedFile {
     var id: UUID
     var filename: String
     var contentPreview: String  // first ~500 chars
-    var fullText: String
+    var relativePath: String    // path relative to Documents directory
     var importedAt: Date
     var lastAccessedAt: Date?
 
@@ -99,12 +74,12 @@ final class ImportedFile {
         id: UUID = .init(),
         filename: String,
         contentPreview: String,
-        fullText: String
+        relativePath: String
     ) {
         self.id = id
         self.filename = filename
         self.contentPreview = contentPreview
-        self.fullText = fullText
+        self.relativePath = relativePath
         self.importedAt = .now
         self.lastAccessedAt = nil
     }

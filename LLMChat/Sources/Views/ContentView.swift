@@ -6,6 +6,7 @@ import SwiftData
 /// If Persona exists: show ChatView.
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query private var personas: [Persona]
 
     // Shared AgentService lives here so it survives view transitions
@@ -34,6 +35,11 @@ struct ContentView: View {
         .task {
             if agentService == nil {
                 agentService = AgentService(container: modelContext.container)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                agentService?.invalidateSession()
             }
         }
     }
