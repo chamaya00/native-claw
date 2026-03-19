@@ -1,359 +1,342 @@
 import SwiftUI
+import SwiftData
+import UniformTypeIdentifiers
 
 struct ChatView: View {
-    @State private var viewModel = ChatViewModel()
-    @State private var inputText = ""
-    @FocusState private var isInputFocused: Bool
-    @Namespace private var pillNamespace
+    @Environment(\.modelContext) private var modelContext
+    @State private var viewModel: ChatViewModel
+    @State private var isInputFocused: Bool = false
+    @State private var showMemoryBrowser = false
+    @State private var showPersonaView = false
+    @State private var showFilePicker = false
 
-    // Name capture: shown on first launch
-    @State private var showNameCapture = true
-
-    // Debug: Session Lab accessible via toolbar menu
-    @State private var showSessionLab = false
-
-    private var dir: LanguageDirection { viewModel.direction }
-
-    var body: some View {
-        Group {
-            if showSessionLab {
-                TabView {
-                    Tab(dir == .vietnameseToEnglish ? "Gia su" : "Tutor", systemImage: "graduationcap.fill") {
-                        tutorView
-                    }
-                    Tab("Session Lab", systemImage: "slider.horizontal.3") {
-                        CustomizationChatView()
-                    }
-                }
-            } else {
-                tutorView
-            }
-        }
-        .sheet(isPresented: $showNameCapture) {
-            NameCaptureSheet(isPresented: $showNameCapture) { name, direction in
-                viewModel.setLearnerName(name, direction: direction)
-            }
-        }
+    init(agentService: AgentService, container: ModelContainer) {
+        _viewModel = State(initialValue: ChatViewModel(agentService: agentService, container: container))
     }
 
-    // MARK: - Main Tutor View
-
-    private var tutorView: some View {
+    var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
-                    if viewModel.isModelUnavailable {
-                        UnavailableView(reason: viewModel.unavailabilityReason)
+                    if !viewModel.agentService.isAvailable {
+                        unavailableView
                     } else {
-                        // Zone 1 — Thread
                         messageList
-
-                        // Error banner
-                        if let errorMessage = viewModel.errorMessage {
-                            errorBanner(message: errorMessage)
-                        }
-
                         Divider()
-
-                        // Zone 2 — Contextual layer (status pill, chips, quick replies)
-                        zone2Layer
-
-                        // Input bar (hidden during flashcard full-screen)
-                        if !viewModel.isShowingFlashcards {
-                            inputBar
-                        }
+                        inputBar
                     }
                 }
 
-                // Zone 3 — Exercise overlay (floats above input bar)
-                if viewModel.isShowingExercise, let exercise = viewModel.currentExercise {
-                    exerciseOverlay(exercise: exercise)
+                // Tool indicator pill
+                if let indicator = viewModel.agentService.toolIndicator {
+                    toolIndicatorPill(label: indicator)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.tutorSpring, value: viewModel.isShowingExercise)
+                        .animation(.spring(duration: 0.3), value: indicator)
+                        .padding(.bottom, 72)
                 }
             }
-            .navigationTitle(navigationTitle)
+            .navigationTitle("Claw")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
-            // Zone 3 — Word grid (medium detent sheet)
-            .sheet(isPresented: $viewModel.isShowingWordGrid) {
-                WordGridSheet(
-                    words: viewModel.currentWords,
-                    selectedWords: $viewModel.selectedWords,
-                    direction: dir,
-                    onConfirm: { Task { await viewModel.confirmWordSelection() } },
-                    onDismiss: { viewModel.isShowingWordGrid = false }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+            .navigationDestination(isPresented: $showMemoryBrowser) {
+                MemoryBrowserView()
             }
-            // Zone 3 — Flashcard deck (large detent sheet)
-            .sheet(isPresented: $viewModel.isShowingFlashcards) {
-                FlashcardSheet(
-                    flashcards: viewModel.flashcards,
-                    flashcardImages: viewModel.flashcardImages,
-                    direction: dir,
-                    onFinish: { Task { await viewModel.finishFlashcardReview() } }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+            .navigationDestination(isPresented: $showPersonaView) {
+                PersonaView(agentService: viewModel.agentService)
+            }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [.plainText, .pdf, .rtf],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileImport(result)
             }
         }
+        .task { await viewModel.startSession() }
+        .onDisappear { viewModel.endSession() }
     }
 
-    // MARK: - Navigation
-
-    private var navigationTitle: String {
-        if let name = viewModel.learnerProfile?.name {
-            return dir == .vietnameseToEnglish ? "Xin chao, \(name)!" : "Hello, \(name)!"
-        }
-        return dir == .vietnameseToEnglish ? "Gia su tieng Anh" : "Vietnamese Tutor"
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button {
-                    viewModel.clearConversation()
-                } label: {
-                    Label(dir == .vietnameseToEnglish ? "Bat dau lai" : "Start over", systemImage: "arrow.counterclockwise")
-                }
-                Button {
-                    showSessionLab.toggle()
-                } label: {
-                    Label("Session Lab", systemImage: "slider.horizontal.3")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .disabled(viewModel.isGenerating)
-        }
-    }
-
-    // MARK: - Zone 1: Thread
+    // MARK: - Message List
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 10) {
                     ForEach(viewModel.messages) { message in
-                        MessageBubble(message: message).id(message.id)
-                    }
-
-                    // Inline feedback card
-                    if let feedback = viewModel.currentFeedback {
-                        FeedbackCard(feedback: feedback, direction: dir)
-                            .padding(.horizontal)
-                            .id("feedbackCard")
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .animation(.tutorSpring, value: viewModel.currentFeedback != nil)
-                    }
-
-                    // Streaming / typing indicator
-                    if viewModel.isGenerating {
-                        if viewModel.streamingContent.isEmpty {
-                            TypingIndicatorView().id("typing-indicator")
-                        } else {
-                            MessageBubble(message: Message(
-                                role: .assistant,
-                                content: viewModel.streamingContent
-                            ))
-                            .id("streaming-bubble")
+                        MessageBubble(message: message) {
+                            viewModel.proposeMemoryFromMessage(message)
                         }
+                        .id(message.id)
                     }
+
+                    // Confirmation cards inline in thread
+                    if let draft = viewModel.agentService.pendingMemoryNote {
+                        MemoryNoteConfirmationCard(
+                            draft: draft,
+                            onSave: { viewModel.confirmMemoryNote() },
+                            onDiscard: { viewModel.discardMemoryNote() }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .id("pendingMemoryNote")
+                    }
+
+                    if let draft = viewModel.agentService.pendingMemoryUpdate {
+                        MemoryUpdateConfirmationCard(
+                            draft: draft,
+                            onSave: { viewModel.confirmMemoryUpdate() },
+                            onDiscard: { viewModel.discardMemoryUpdate() }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .id("pendingMemoryUpdate")
+                    }
+
+                    if let draft = viewModel.agentService.pendingPersonaUpdate {
+                        PersonaUpdateConfirmationCard(
+                            draft: draft,
+                            onSave: { viewModel.confirmPersonaUpdate() },
+                            onDiscard: { viewModel.discardPersonaUpdate() }
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .id("pendingPersonaUpdate")
+                    }
+
+                    // Error banner inline
+                    if let error = viewModel.error {
+                        errorBanner(message: error)
+                            .id("errorBanner")
+                    }
+
+                    // Bottom anchor for scroll
+                    Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(.horizontal)
                 .padding(.vertical, 12)
+                .animation(.spring(duration: 0.3), value: viewModel.messages.count)
+                .animation(.spring(duration: 0.3), value: viewModel.agentService.pendingMemoryNote?.id)
+                .animation(.spring(duration: 0.3), value: viewModel.agentService.pendingPersonaUpdate?.id)
             }
-            .onChange(of: viewModel.messages.count) { scrollToBottom(proxy: proxy) }
-            .onChange(of: viewModel.currentFeedback != nil) {
-                withAnimation { proxy.scrollTo("feedbackCard", anchor: .bottom) }
+            .onChange(of: viewModel.messages.count) {
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onChange(of: viewModel.isGenerating) {
-                if viewModel.isGenerating {
-                    withAnimation { proxy.scrollTo("typing-indicator", anchor: .bottom) }
+            .onChange(of: viewModel.agentService.pendingMemoryNote?.id) {
+                if viewModel.agentService.pendingMemoryNote != nil {
+                    withAnimation { proxy.scrollTo("pendingMemoryNote", anchor: .bottom) }
                 }
             }
-            .onChange(of: viewModel.streamingContent) {
-                withAnimation { proxy.scrollTo("streaming-bubble", anchor: .bottom) }
-            }
-        }
-    }
-
-    // MARK: - Zone 2: Contextual Layer
-
-    private var zone2Layer: some View {
-        VStack(spacing: 0) {
-            // Status pill morphs into sheet handle via matchedGeometryEffect
-            if let status = viewModel.statusMessage {
-                HStack {
-                    Spacer()
-                    StatusPill(message: status, namespace: pillNamespace)
-                    Spacer()
-                }
-                .padding(.vertical, 6)
-            }
-
-            // Topic chips
-            if !viewModel.topics.isEmpty {
-                TopicChipBar(topics: viewModel.topics, direction: dir) { topic in
-                    Task { await viewModel.selectTopic(topic) }
-                }
-            }
-
-            // Quick reply chips
-            if !viewModel.quickReplies.isEmpty {
-                QuickReplyBar(replies: viewModel.quickReplies, direction: dir) { reply in
-                    Task { await viewModel.handleQuickReply(reply) }
+            .onChange(of: viewModel.error) {
+                if viewModel.error != nil {
+                    withAnimation { proxy.scrollTo("errorBanner", anchor: .bottom) }
                 }
             }
         }
-        .animation(.tutorSpring, value: viewModel.statusMessage)
-        .animation(.tutorSpring, value: viewModel.topics.count)
-        .animation(.tutorSpring, value: viewModel.quickReplies.count)
-    }
-
-    // MARK: - Zone 3: Exercise Overlay
-
-    private func exerciseOverlay(exercise: Exercise) -> some View {
-        VStack {
-            Spacer()
-            ExerciseOverlay(
-                exercise: exercise,
-                exerciseIndex: viewModel.currentExerciseIndex,
-                totalExercises: viewModel.practiceRound?.exercises.count ?? 1,
-                progress: viewModel.exerciseProgress,
-                direction: dir,
-                onAnswer: { answer in Task { await viewModel.submitAnswer(answer) } }
-            )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
-        .background(
-            Color.black.opacity(0.3)
-                .ignoresSafeArea()
-                .onTapGesture { } // absorb taps to prevent dismissal
-        )
     }
 
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(spacing: 12) {
-            TextField(dir == .vietnameseToEnglish ? "Nhan tin..." : "Message...", text: $inputText, axis: .vertical)
+        HStack(alignment: .bottom, spacing: 10) {
+            // Import file button
+            Button(action: { showFilePicker = true }) {
+                Image(systemName: "paperclip")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+            }
+            .accessibilityLabel("Import file")
+
+            TextField("Message…", text: $viewModel.inputText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($isInputFocused)
+                .lineLimit(1...6)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .onSubmit { sendMessage() }
-                .disabled(viewModel.phase != .freeChat)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .onSubmit {
+                    Task { await viewModel.sendMessage() }
+                }
 
-            Button(action: sendMessage) {
+            // Mic placeholder (v1 stub)
+            Button(action: {}) {
+                Image(systemName: "mic")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 36, height: 36)
+            }
+            .disabled(true)
+            .accessibilityLabel("Voice input (coming soon)")
+
+            // Send button
+            Button(action: { Task { await viewModel.sendMessage() } }) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(canSend ? .blue : .gray)
+                    .foregroundStyle(canSend ? Color.accentColor : Color.secondary)
             }
             .disabled(!canSend)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color(.systemBackground))
     }
 
     private var canSend: Bool {
-        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !viewModel.isGenerating
-            && viewModel.phase == .freeChat
+        !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !viewModel.isResponding
     }
 
-    private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !viewModel.isGenerating else { return }
-        inputText = ""
-        isInputFocused = false
-        Task { await viewModel.sendMessage(text) }
+    // MARK: - Tool Indicator
+
+    private func toolIndicatorPill(label: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .scaleEffect(0.7)
+                .tint(.secondary)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            .ultraThinMaterial,
+            in: Capsule()
+        )
+        .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
     }
 
-    private func errorBanner(message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-            Text(message).font(.subheadline).foregroundStyle(.primary)
+    // MARK: - Unavailable View
+
+    private var unavailableView: some View {
+        VStack(spacing: 20) {
             Spacer()
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(Color.orange.opacity(0.12))
-        .overlay(alignment: .top) {
-            Divider().overlay(Color.orange.opacity(0.4))
-        }
-    }
-
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        guard let last = viewModel.messages.last else { return }
-        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-    }
-}
-
-// MARK: - Supporting Views (moved here to avoid separate file duplication)
-
-struct UnavailableView: View {
-    let reason: String?
-
-    var body: some View {
-        VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(.orange)
 
-            Text("Feature unavailable")
-                .font(.title2)
-                .fontWeight(.semibold)
+            Text("Apple Intelligence Required")
+                .font(.title2.weight(.semibold))
 
-            Text(reason ?? "This device does not support Apple Intelligence. A compatible device running iOS 26 or later is required.")
+            Text("Claw requires Apple Intelligence. Enable it in Settings → Apple Intelligence & Siri, then run Claw on a supported device.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
-    }
-}
-
-struct TypingIndicatorView: View {
-    @State private var animationPhase = 0
-
-    var body: some View {
-        HStack {
-            HStack(spacing: 4) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(Color.secondary)
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(animationPhase == index ? 1.3 : 1.0)
-                        .animation(
-                            .easeInOut(duration: 0.4)
-                                .repeatForever()
-                                .delay(Double(index) * 0.15),
-                            value: animationPhase
-                        )
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-
+                .padding(.horizontal, 32)
             Spacer()
         }
-        .onAppear { animationPhase = 1 }
     }
-}
 
-#Preview {
-    ChatView()
+    // MARK: - Error Banner
+
+    private func errorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer()
+            Button("Dismiss") { viewModel.error = nil }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.1))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button(action: { showPersonaView = true }) {
+                Image(systemName: "person.crop.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("Persona")
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                Button("Memory", systemImage: "brain") {
+                    showMemoryBrowser = true
+                }
+                Button("Import file", systemImage: "doc.badge.plus") {
+                    showFilePicker = true
+                }
+                Divider()
+                Button("Clear conversation", systemImage: "trash", role: .destructive) {
+                    viewModel.clearConversation()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+    }
+
+    // MARK: - File Import
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            Task {
+                await importFile(from: url)
+            }
+        case .failure(let error):
+            viewModel.error = "Failed to open file picker: \(error.localizedDescription)"
+        }
+    }
+
+    private func importFile(from url: URL) async {
+        guard url.startAccessingSecurityScopedResource() else {
+            viewModel.error = "Could not access the selected file."
+            return
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        do {
+            let text = try extractText(from: url)
+            let preview = String(text.prefix(500))
+            let filename = url.lastPathComponent
+
+            let context = ModelContext(modelContext.container)
+            let file = ImportedFile(filename: filename, contentPreview: preview, fullText: text)
+            context.insert(file)
+            try context.save()
+
+            // Confirm in chat
+            let confirmMsg = ChatMessage(
+                role: "assistant",
+                content: "I've loaded **\(filename)**. I can reference it when relevant."
+            )
+            viewModel.messages.append(confirmMsg)
+        } catch {
+            viewModel.error = "Failed to import file: \(error.localizedDescription)"
+        }
+    }
+
+    private func extractText(from url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+
+        // PDF extraction (stub — real PDF extraction requires PDFKit)
+        if url.pathExtension.lowercased() == "pdf" {
+            // TODO: Use PDFKit for real PDF text extraction
+            // NOTE: Stubbed — returning placeholder until PDFKit is integrated
+            return "[PDF content from \(url.lastPathComponent) — text extraction not yet implemented. Add PDFKit for full support.]"
+        }
+
+        // RTF: try to parse as attributed string
+        if url.pathExtension.lowercased() == "rtf" {
+            if let attrStr = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ) {
+                return attrStr.string
+            }
+        }
+
+        // Plain text and markdown
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+    }
 }

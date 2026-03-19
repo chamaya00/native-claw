@@ -1,131 +1,119 @@
 import SwiftUI
 
 struct MessageBubble: View {
-    let message: Message
+    let message: ChatMessage
+    let onSaveToMemory: () -> Void
 
-    private var isUser: Bool {
-        message.role == .user
-    }
+    private var isUser: Bool { message.role == "user" }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if isUser {
                 Spacer(minLength: 60)
             } else {
-                assistantAvatar
+                avatarView
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                bubbleContent
-                timestampLabel
+                bubbleView
+                if !message.toolCallsMade.isEmpty {
+                    toolCallBadges
+                }
             }
 
             if !isUser {
                 Spacer(minLength: 60)
             }
         }
+        .padding(.horizontal, 16)
     }
 
-    private var assistantAvatar: some View {
-        Image(systemName: "brain.head.profile")
-            .font(.system(size: 16))
-            .foregroundStyle(.white)
-            .frame(width: 32, height: 32)
-            .background(Color.purple.gradient)
-            .clipShape(Circle())
-    }
+    // MARK: - Components
 
-    private var bubbleContent: some View {
-        Text(message.content)
-            .font(.body)
-            .foregroundStyle(isUser ? .white : .primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(bubbleBackground)
-            .clipShape(BubbleShape(isUser: isUser))
-    }
-
-    private var bubbleBackground: some ShapeStyle {
-        if isUser {
-            return AnyShapeStyle(Color.blue.gradient)
-        } else {
-            return AnyShapeStyle(Color(.secondarySystemBackground))
-        }
-    }
-
-    private var timestampLabel: some View {
-        Text(message.timestamp.formatted(.dateTime.hour().minute()))
-            .font(.caption2)
+    private var avatarView: some View {
+        Text("◈")
+            .font(.caption)
             .foregroundStyle(.secondary)
+            .frame(width: 28, height: 28)
+            .background(Color(.systemGray5), in: Circle())
     }
-}
 
-struct BubbleShape: Shape {
-    let isUser: Bool
-    private let cornerRadius: CGFloat = 18
-    private let tailRadius: CGFloat = 4
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-
-        let topLeft = CGPoint(x: rect.minX + cornerRadius, y: rect.minY)
-        let topRight = CGPoint(x: rect.maxX - cornerRadius, y: rect.minY)
-        let bottomRight = CGPoint(x: rect.maxX - (isUser ? tailRadius : cornerRadius), y: rect.maxY)
-        let bottomLeft = CGPoint(x: rect.minX + (isUser ? cornerRadius : tailRadius), y: rect.maxY)
-
-        path.move(to: topLeft)
-        path.addLine(to: topRight)
-        path.addArc(
-            center: CGPoint(x: rect.maxX - cornerRadius, y: rect.minY + cornerRadius),
-            radius: cornerRadius,
-            startAngle: .degrees(-90),
-            endAngle: .degrees(0),
-            clockwise: false
-        )
-
-        if isUser {
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - tailRadius))
-            path.addArc(
-                center: CGPoint(x: rect.maxX - tailRadius, y: rect.maxY - tailRadius),
-                radius: tailRadius,
-                startAngle: .degrees(0),
-                endAngle: .degrees(90),
-                clockwise: false
-            )
-        } else {
-            path.addLine(to: bottomRight)
+    private var bubbleView: some View {
+        Group {
+            if message.isStreaming && message.content.isEmpty {
+                thinkingDots
+            } else {
+                Text(message.content)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .foregroundStyle(isUser ? Color.white : Color.primary)
+            }
         }
-
-        path.addLine(to: bottomLeft)
-
-        if !isUser {
-            path.addArc(
-                center: CGPoint(x: rect.minX + tailRadius, y: rect.maxY - tailRadius),
-                radius: tailRadius,
-                startAngle: .degrees(90),
-                endAngle: .degrees(180),
-                clockwise: false
-            )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.secondarySystemBackground)))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            if !isUser {
+                Button("Save to memory", systemImage: "brain") {
+                    onSaveToMemory()
+                }
+            }
+            Button("Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = message.content
+            }
         }
+    }
 
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cornerRadius))
-        path.addArc(
-            center: CGPoint(x: rect.minX + cornerRadius, y: rect.minY + cornerRadius),
-            radius: cornerRadius,
-            startAngle: .degrees(180),
-            endAngle: .degrees(270),
-            clockwise: false
-        )
+    private var thinkingDots: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                ThinkingDot(delay: Double(i) * 0.18)
+            }
+        }
+        .padding(.vertical, 4)
+    }
 
-        path.closeSubpath()
-        return path
+    private var toolCallBadges: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "wrench.adjustable")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            ForEach(message.toolCallsMade, id: \.self) { tool in
+                Text(tool)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.systemGray5), in: Capsule())
+            }
+        }
+        .padding(.leading, isUser ? 0 : 4)
+        .padding(.trailing, isUser ? 4 : 0)
     }
 }
 
-#Preview {
-    VStack(spacing: 12) {
-        MessageBubble(message: Message(role: .user, content: "Hello! Can you help me understand quantum computing?"))
-        MessageBubble(message: Message(role: .assistant, content: "Of course! Quantum computing uses quantum bits (qubits) instead of classical bits. Unlike classical bits that are either 0 or 1, qubits can exist in a superposition of both states simultaneously."))
+// MARK: - Thinking Dot
+
+private struct ThinkingDot: View {
+    let delay: Double
+    @State private var opacity: Double = 0.3
+
+    var body: some View {
+        Circle()
+            .fill(Color.secondary)
+            .frame(width: 7, height: 7)
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: 0.55)
+                        .repeatForever(autoreverses: true)
+                        .delay(delay)
+                ) {
+                    opacity = 1.0
+                }
+            }
     }
-    .padding()
 }
+
+import UIKit
