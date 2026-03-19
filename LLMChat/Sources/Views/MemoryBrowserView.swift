@@ -3,20 +3,23 @@ import SwiftData
 
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(
-        filter: #Predicate<MemoryNote> { $0.isUserApproved == true },
-        sort: [SortDescriptor(\MemoryNote.importanceScore, order: .reverse),
-               SortDescriptor(\MemoryNote.updatedAt, order: .reverse)]
-    ) private var memories: [MemoryNote]
+    @Query(sort: \MemoryNote.importanceScore, order: .reverse) private var memories: [MemoryNote]
 
     @State private var expandedID: UUID?
     @State private var searchText: String = ""
     @State private var showArchived = false
 
+    init() {}
+
+    private var approvedMemories: [MemoryNote] {
+        memories.filter { $0.isUserApproved }
+    }
+
     private var filtered: [MemoryNote] {
-        if searchText.isEmpty { return memories }
+        let base = approvedMemories
+        if searchText.isEmpty { return base }
         let lower = searchText.lowercased()
-        return memories.filter {
+        return base.filter {
             $0.title.lowercased().contains(lower)
             || $0.summary.lowercased().contains(lower)
             || $0.topics.contains { $0.lowercased().contains(lower) }
@@ -25,7 +28,7 @@ struct MemoryBrowserView: View {
 
     var body: some View {
         Group {
-            if memories.isEmpty {
+            if approvedMemories.isEmpty {
                 emptyState
             } else {
                 List {
@@ -53,7 +56,7 @@ struct MemoryBrowserView: View {
                 Button(action: exportMarkdown) {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .disabled(memories.isEmpty)
+                .disabled(approvedMemories.isEmpty)
             }
         }
     }
@@ -89,7 +92,7 @@ struct MemoryBrowserView: View {
 
     private func exportMarkdown() {
         var md = "# Claw Memory Export\n\nExported: \(Date.now.formatted())\n\n"
-        for note in memories {
+        for note in approvedMemories {
             md += "## \(note.title)\n\n"
             md += "\(note.summary)\n\n"
             if !note.topics.isEmpty {
