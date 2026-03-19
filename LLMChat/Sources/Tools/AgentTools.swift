@@ -24,24 +24,28 @@ struct SearchMemoryTool: Tool {
         await onEvent(.toolStarted("Searching memory…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
-        let results = try await MainActor.run {
+        let formatted: String = await MainActor.run {
             let context = ModelContext(container)
-            return searchMemories(query: arguments.query, context: context, limit: 5)
+            let results = searchMemories(query: arguments.query, context: context, limit: 5)
+
+            if results.isEmpty {
+                return ""
+            }
+
+            return results.map { note in
+                """
+                - ID: \(note.id)
+                  Title: \(note.title)
+                  Summary: \(note.summary)
+                  Topics: \(note.topics.joined(separator: ", "))
+                  Created: \(note.createdAt.formatted(date: .abbreviated, time: .omitted))
+                """
+            }.joined(separator: "\n")
         }
 
-        if results.isEmpty {
+        if formatted.isEmpty {
             return "No memory notes found matching '\(arguments.query)'."
         }
-
-        let formatted = results.map { note in
-            """
-            - ID: \(note.id)
-              Title: \(note.title)
-              Summary: \(note.summary)
-              Topics: \(note.topics.joined(separator: ", "))
-              Created: \(note.createdAt.formatted(date: .abbreviated, time: .omitted))
-            """
-        }.joined(separator: "\n")
 
         return "Memory search results for '\(arguments.query)':\n\(formatted)"
     }
@@ -127,7 +131,7 @@ struct UpdateMemoryNoteTool: Tool {
             return "Error: invalid UUID '\(arguments.id)'."
         }
 
-        let originalTitle: String = try await MainActor.run {
+        let originalTitle: String = await MainActor.run {
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<MemoryNote>(
                 predicate: #Predicate { $0.id == noteID }
@@ -173,7 +177,7 @@ struct ReadPersonaTool: Tool {
         await onEvent(.toolStarted("Reading persona…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
-        let result: String = try await MainActor.run {
+        let result: String = await MainActor.run {
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<Persona>()
             guard let persona = (try? context.fetch(descriptor))?.first else {
@@ -251,7 +255,7 @@ struct ListImportedFilesTool: Tool {
         await onEvent(.toolStarted("Listing files…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
-        let result: String = try await MainActor.run {
+        let result: String = await MainActor.run {
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<ImportedFile>(
                 sortBy: [SortDescriptor(\.importedAt, order: .reverse)]
@@ -294,7 +298,7 @@ struct ReadImportedFileTool: Tool {
         await onEvent(.toolStarted("Reading file…"))
         defer { Task { await onEvent(.toolCompleted) } }
 
-        let result: String = try await MainActor.run {
+        let result: String = await MainActor.run {
             let context = ModelContext(container)
             let descriptor = FetchDescriptor<ImportedFile>(
                 predicate: #Predicate { $0.id == fileID }
