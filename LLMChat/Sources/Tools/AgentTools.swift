@@ -363,7 +363,10 @@ func searchMemories(query: String, context: ModelContext, limit: Int) -> [Memory
 
 @Generable
 struct PersonaDraft {
-    @Guide(description: "What the user wants Claw to help with — their main goal or use case")
+    @Guide(description: "The name the user chose for the assistant")
+    var name: String
+
+    @Guide(description: "What the user wants the assistant to help with — their main goal or use case")
     var purpose: String
 
     @Guide(description: "The desired tone and communication style, e.g. 'direct and sharp' or 'warm and encouraging'")

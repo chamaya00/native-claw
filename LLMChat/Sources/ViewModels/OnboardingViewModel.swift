@@ -15,6 +15,7 @@ final class OnboardingViewModel {
     var isComplete: Bool = false
 
     struct PersonaPreview {
+        var name: String
         var purpose: String
         var tone: String
         var values: [String]
@@ -38,10 +39,10 @@ final class OnboardingViewModel {
     func startOnboarding() async {
         agentService.initOnboardingSession()
 
-        // Initial Claw message
+        // Initial message — the assistant has no name or identity yet
         let intro = ChatMessage(
             role: "assistant",
-            content: "What should I help you with? You can be specific — a project, a goal, a recurring problem you want a thinking partner for."
+            content: "Hi. I don't have a name yet, no personality, nothing. Let's fix that. What would you like to call me?"
         )
         messages = [intro]
     }
@@ -86,8 +87,9 @@ final class OnboardingViewModel {
 
     func generatePersonaPreview() async {
         do {
-            let (purpose, tone, values, areas) = try await agentService.extractPersonaDraft()
+            let (name, purpose, tone, values, areas) = try await agentService.extractPersonaDraft()
             personaPreview = PersonaPreview(
+                name: name,
                 purpose: purpose,
                 tone: tone,
                 values: values,
@@ -96,7 +98,7 @@ final class OnboardingViewModel {
 
             let previewMessage = ChatMessage(
                 role: "assistant",
-                content: "Here's who I'll be for you. Does this feel right?\n\n**Purpose:** \(purpose)\n**Tone:** \(tone)\n**Values:** \(values.joined(separator: ", "))\n**Focus areas:** \(areas.joined(separator: ", "))"
+                content: "Here's who I'll be for you. Does this feel right?\n\n**Name:** \(name)\n**Purpose:** \(purpose)\n**Tone:** \(tone)\n**Values:** \(values.joined(separator: ", "))\n**Focus areas:** \(areas.joined(separator: ", "))"
             )
             messages.append(previewMessage)
         } catch {
@@ -115,6 +117,7 @@ final class OnboardingViewModel {
         for p in existing { context.delete(p) }
 
         let persona = Persona(
+            name: preview.name,
             purpose: preview.purpose,
             tone: preview.tone,
             values: preview.values,
