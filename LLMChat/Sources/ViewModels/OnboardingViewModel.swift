@@ -13,6 +13,7 @@ final class OnboardingViewModel {
     var error: String?
     var showSavedToast: Bool = false
     var isComplete: Bool = false
+    var personaPreview: PersonaPreview?
 
     struct PersonaPreview {
         var name: String
