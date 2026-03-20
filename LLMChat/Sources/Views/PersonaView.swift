@@ -51,16 +51,10 @@ struct PersonaView: View {
                 .padding(.vertical, 4)
             }
 
-            Section("Purpose") {
-                Text(persona.purpose.isEmpty ? "Not set" : persona.purpose)
+            Section("Vibe") {
+                Text(persona.vibe.isEmpty ? "Not set" : persona.vibe)
                     .font(.body)
-                    .foregroundStyle(persona.purpose.isEmpty ? .secondary : .primary)
-            }
-
-            Section("Tone") {
-                Text(persona.tone.isEmpty ? "Not set" : persona.tone)
-                    .font(.body)
-                    .foregroundStyle(persona.tone.isEmpty ? .secondary : .primary)
+                    .foregroundStyle(persona.vibe.isEmpty ? .secondary : .primary)
             }
 
             if !persona.values.isEmpty {

@@ -11,13 +11,12 @@ final class OnboardingViewModel {
     var inputText: String = ""
     var isResponding: Bool = false
     var error: String?
-    var personaPreview: PersonaPreview?
+    var showSavedToast: Bool = false
     var isComplete: Bool = false
 
     struct PersonaPreview {
         var name: String
-        var purpose: String
-        var tone: String
+        var vibe: String
         var values: [String]
         var expertiseAreas: [String]
     }
@@ -87,29 +86,35 @@ final class OnboardingViewModel {
 
     func generatePersonaPreview() async {
         do {
-            let (name, purpose, tone, values, areas) = try await agentService.extractPersonaDraft()
-            personaPreview = PersonaPreview(
-                name: name,
-                purpose: purpose,
-                tone: tone,
-                values: values,
-                expertiseAreas: areas
-            )
+            let (name, vibe, values, areas) = try await agentService.extractPersonaDraft()
+
+            var summaryParts = ["**\(name)**", "vibe: \(vibe)"]
+            if !values.isEmpty {
+                summaryParts.append("values: \(values.joined(separator: ", "))")
+            }
+            if !areas.isEmpty {
+                summaryParts.append("into: \(areas.joined(separator: ", "))")
+            }
 
             let previewMessage = ChatMessage(
                 role: "assistant",
-                content: "Here's who I'll be for you. Does this feel right?\n\n**Name:** \(name)\n**Purpose:** \(purpose)\n**Tone:** \(tone)\n**Values:** \(values.joined(separator: ", "))\n**Focus areas:** \(areas.joined(separator: ", "))"
+                content: "alright, got it — " + summaryParts.joined(separator: ", ") + "."
             )
             messages.append(previewMessage)
+
+            try savePersona(name: name, vibe: vibe, values: values, expertiseAreas: areas)
+            showSavedToast = true
+            try await Task.sleep(for: .seconds(2.5))
+            showSavedToast = false
+            isComplete = true
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    // MARK: - Confirm and Write Persona
+    // MARK: - Persist Persona
 
-    func confirmPersona() throws {
-        guard let preview = personaPreview else { return }
+    private func savePersona(name: String, vibe: String, values: [String], expertiseAreas: [String]) throws {
         let context = ModelContext(container)
 
         // Remove any existing persona
@@ -117,14 +122,12 @@ final class OnboardingViewModel {
         for p in existing { context.delete(p) }
 
         let persona = Persona(
-            name: preview.name,
-            purpose: preview.purpose,
-            tone: preview.tone,
-            values: preview.values,
-            expertiseAreas: preview.expertiseAreas
+            name: name,
+            vibe: vibe,
+            values: values,
+            expertiseAreas: expertiseAreas
         )
         context.insert(persona)
         try context.save()
-        isComplete = true
     }
 }

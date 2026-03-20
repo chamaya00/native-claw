@@ -24,12 +24,19 @@ struct OnboardingView: View {
 
                 Divider()
 
-                // Input or confirmation
-                if let preview = viewModel.personaPreview {
-                    personaConfirmBar(preview: preview)
-                } else {
-                    inputBar
+                // Input bar
+                inputBar
+            }
+
+            // Saved toast overlay
+            if viewModel.showSavedToast {
+                VStack {
+                    Spacer()
+                    savedToast
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 80)
                 }
+                .animation(.spring(duration: 0.4), value: viewModel.showSavedToast)
             }
         }
         .task { await viewModel.startOnboarding() }
@@ -112,62 +119,18 @@ struct OnboardingView: View {
             && !viewModel.isResponding
     }
 
-    // MARK: - Persona Confirm Bar
+    // MARK: - Saved Toast
 
-    private func personaConfirmBar(preview: OnboardingViewModel.PersonaPreview) -> some View {
-        VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(preview.name)
-                    .font(.subheadline.weight(.semibold))
-
-                Group {
-                    previewRow(label: "Purpose", value: preview.purpose)
-                    previewRow(label: "Tone", value: preview.tone)
-                    previewRow(label: "Values", value: preview.values.joined(separator: ", "))
-                    previewRow(label: "Focus", value: preview.expertiseAreas.joined(separator: ", "))
-                }
-            }
-            .padding(14)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            HStack(spacing: 10) {
-                Button("Adjust") {
-                    viewModel.personaPreview = nil
-                }
-                .font(.footnote.weight(.medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.primary)
-
-                Button("This is me →") {
-                    do {
-                        try viewModel.confirmPersona()
-                    } catch {
-                        viewModel.error = error.localizedDescription
-                    }
-                }
-                .font(.footnote.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.white)
-            }
+    private var savedToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text("Saved")
+                .font(.subheadline.weight(.medium))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color(.systemBackground))
-    }
-
-    private func previewRow(label: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(label + ":")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 56, alignment: .leading)
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(.primary)
-        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
     }
 }
