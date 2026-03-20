@@ -135,22 +135,23 @@ final class AgentService {
     func initOnboardingSession() {
 #if canImport(FoundationModels)
         let prompt = """
-        You are a brand-new AI assistant with no name, no personality, and no purpose yet. \
-        The user is about to define who you are.
+        You are a blank-slate AI assistant being shaped by the user right now. \
+        You have no name, no vibe, nothing yet.
 
-        Your job is to guide them through a short, friendly conversation to figure out:
+        Your job is to have a relaxed, natural conversation to figure out:
         1. What they want to name you
-        2. What personality or communication style they want you to have
-        3. What they mainly want your help with
+        2. What vibe or energy they want you to carry — not "how do you want me to make you feel", \
+           just ask something like "what kind of vibe are you going for?" or "chill and casual, \
+           or something else?"
+        3. Optionally, what topics or areas they care about (don't force this)
 
         Rules:
-        - Ask one question at a time, never stack multiple questions.
-        - Keep messages short — one or two sentences max.
-        - Be warm but neutral; you have no personality until they give you one.
-        - Do not use bullet points, headers, or markdown.
-        - Do not mention that you are an AI setting up a persona — just have a natural conversation.
-        - Once you have a name, use it naturally in follow-up messages.
-        - After 3 or more user responses, you may start synthesising what you've learned.
+        - Keep it casual and loose. Short messages, one idea at a time.
+        - Don't be stiff or formal. Sound like a person, not a setup wizard.
+        - No bullet points, headers, or markdown — just plain conversational text.
+        - Don't explain what you're doing or why. Just ask and listen.
+        - Once you have a name, use it naturally.
+        - After 3 or more user responses, you have enough to wrap up.
         """
         onboardingSession = LanguageModelSession(instructions: prompt)
 #endif
@@ -169,7 +170,7 @@ final class AgentService {
     }
 
     /// Extract a structured PersonaDraft from the onboarding conversation.
-    func extractPersonaDraft() async throws -> (name: String, purpose: String, tone: String, values: [String], expertiseAreas: [String]) {
+    func extractPersonaDraft() async throws -> (name: String, vibe: String, values: [String], expertiseAreas: [String]) {
 #if canImport(FoundationModels)
         guard let onboardingSession else {
             throw AgentError.sessionNotInitialized
@@ -179,12 +180,11 @@ final class AgentService {
             generating: PersonaDraft.self
         )
         let draft = response.content
-        return (draft.name, draft.purpose, draft.tone, draft.values, draft.expertiseAreas)
+        return (draft.name, draft.vibe, draft.values, draft.expertiseAreas)
 #else
         return (
             name: "Claw",
-            purpose: "General AI assistance",
-            tone: "Direct and helpful",
+            vibe: "Direct and helpful",
             values: ["concise", "honest"],
             expertiseAreas: ["productivity", "writing"]
         )
@@ -236,8 +236,7 @@ final class AgentService {
         let descriptor = FetchDescriptor<Persona>()
         guard let persona = (try? context.fetch(descriptor))?.first else { return }
 
-        if let p = draft.proposedPurpose { persona.purpose = p }
-        if let t = draft.proposedTone { persona.tone = t }
+        if let v = draft.proposedVibe { persona.vibe = v }
         if let v = draft.proposedValues { persona.values = v }
         if let e = draft.proposedExpertiseAreas { persona.expertiseAreas = e }
         persona.updatedAt = .now
@@ -287,8 +286,7 @@ final class AgentService {
 
             Your current persona:
             - Name: \(persona.name)
-            - Purpose: \(persona.purpose)
-            - Tone: \(persona.tone)
+            - Vibe: \(persona.vibe)
             - Values: \(persona.values.joined(separator: ", "))
             - Expertise areas: \(persona.expertiseAreas.joined(separator: ", "))
             """

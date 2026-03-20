@@ -6,22 +6,19 @@ import SwiftData
 @Model
 final class Persona {
     var name: String
-    var purpose: String
-    var tone: String
+    var vibe: String
     var values: [String]
     var expertiseAreas: [String]
     var updatedAt: Date
 
     init(
         name: String = "Claw",
-        purpose: String,
-        tone: String,
+        vibe: String,
         values: [String],
         expertiseAreas: [String]
     ) {
         self.name = name
-        self.purpose = purpose
-        self.tone = tone
+        self.vibe = vibe
         self.values = values
         self.expertiseAreas = expertiseAreas
         self.updatedAt = .now
@@ -145,8 +142,7 @@ struct MemoryUpdateDraft: Sendable, Identifiable {
 
 struct PersonaUpdateDraft: Sendable, Identifiable {
     let id = UUID()
-    var proposedPurpose: String?
-    var proposedTone: String?
+    var proposedVibe: String?
     var proposedValues: [String]?
     var proposedExpertiseAreas: [String]?
 }

@@ -162,7 +162,7 @@ struct UpdateMemoryNoteTool: Tool {
 struct ReadPersonaTool: Tool {
     static let name = "readPersona"
     let name = ReadPersonaTool.name
-    let description = "Read the current Claw persona — name, purpose, tone, values, and expertise areas."
+    let description = "Read the current Claw persona — name, vibe, values, and expertise areas."
 
     @Generable
     struct Arguments {
@@ -185,8 +185,7 @@ struct ReadPersonaTool: Tool {
             }
             return """
             Name: \(persona.name)
-            Purpose: \(persona.purpose)
-            Tone: \(persona.tone)
+            Vibe: \(persona.vibe)
             Values: \(persona.values.joined(separator: ", "))
             Expertise areas: \(persona.expertiseAreas.joined(separator: ", "))
             """
@@ -204,11 +203,8 @@ struct ProposePersonaUpdateTool: Tool {
 
     @Generable
     struct Arguments {
-        @Guide(description: "Proposed new purpose, or empty string to keep existing")
-        var proposedPurpose: String
-
-        @Guide(description: "Proposed new tone, or empty string to keep existing")
-        var proposedTone: String
+        @Guide(description: "Proposed new vibe/communication style, or empty string to keep existing")
+        var proposedVibe: String
 
         @Guide(description: "Proposed new values list, or empty array to keep existing", .maximumCount(5))
         var proposedValues: [String]
@@ -221,8 +217,7 @@ struct ProposePersonaUpdateTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let draft = PersonaUpdateDraft(
-            proposedPurpose: arguments.proposedPurpose.isEmpty ? nil : arguments.proposedPurpose,
-            proposedTone: arguments.proposedTone.isEmpty ? nil : arguments.proposedTone,
+            proposedVibe: arguments.proposedVibe.isEmpty ? nil : arguments.proposedVibe,
             proposedValues: arguments.proposedValues.isEmpty ? nil : arguments.proposedValues,
             proposedExpertiseAreas: arguments.proposedExpertiseAreas.isEmpty ? nil : arguments.proposedExpertiseAreas
         )
@@ -366,16 +361,13 @@ struct PersonaDraft {
     @Guide(description: "The name the user chose for the assistant")
     var name: String
 
-    @Guide(description: "What the user wants the assistant to help with — their main goal or use case")
-    var purpose: String
-
-    @Guide(description: "The desired tone and communication style, e.g. 'direct and sharp' or 'warm and encouraging'")
-    var tone: String
+    @Guide(description: "The desired vibe and communication style, e.g. 'chill and direct' or 'warm and encouraging'")
+    var vibe: String
 
     @Guide(description: "Core values that should guide responses, e.g. 'concise', 'honest', 'synthesis-focused'", .maximumCount(5))
     var values: [String]
 
-    @Guide(description: "Topics the user cares about most right now", .maximumCount(8))
+    @Guide(description: "Topics the user cares about most right now, if mentioned; empty if not", .maximumCount(8))
     var expertiseAreas: [String]
 }
 

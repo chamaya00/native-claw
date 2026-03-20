@@ -172,11 +172,8 @@ struct PersonaUpdateConfirmationCard: View {
                 .font(.subheadline.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 4) {
-                if let p = draft.proposedPurpose {
-                    diffRow(label: "Purpose", value: p)
-                }
-                if let t = draft.proposedTone {
-                    diffRow(label: "Tone", value: t)
+                if let v = draft.proposedVibe {
+                    diffRow(label: "Vibe", value: v)
                 }
                 if let v = draft.proposedValues {
                     diffRow(label: "Values", value: v.joined(separator: ", "))
