@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Claw creates reminders you approve in chat. Access is requested only when you confirm a reminder, and nothing is added without your approval.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

@@ -1,13 +1,13 @@
 import SwiftUI
 import SwiftData
+import AgentKit
 
 struct OnboardingView: View {
-    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: OnboardingViewModel
     let onComplete: () -> Void
 
-    init(agentService: AgentService, container: ModelContainer, onComplete: @escaping () -> Void) {
-        _viewModel = State(initialValue: OnboardingViewModel(agentService: agentService, container: container))
+    init(engine: ConversationEngine, container: ModelContainer, onComplete: @escaping () -> Void) {
+        _viewModel = State(initialValue: OnboardingViewModel(engine: engine, container: container))
         self.onComplete = onComplete
     }
 
@@ -16,19 +16,12 @@ struct OnboardingView: View {
             Color(.systemBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
                 header
-
-                // Message thread
                 messageList
-
                 Divider()
-
-                // Input bar
                 inputBar
             }
 
-            // Saved toast overlay
             if viewModel.showSavedToast {
                 VStack {
                     Spacer()
@@ -123,10 +116,8 @@ struct OnboardingView: View {
 
     private var savedToast: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            Text("Saved")
-                .font(.subheadline.weight(.medium))
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Text("Saved").font(.subheadline.weight(.medium))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

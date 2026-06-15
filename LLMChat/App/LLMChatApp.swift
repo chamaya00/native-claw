@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import MemoryKit
 
 @main
 struct ClawApp: App {
@@ -7,8 +8,8 @@ struct ClawApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for:
-                Persona.self,
+            container = try ModelContainer(
+                for: Persona.self,
                 MemoryNote.self,
                 ImportedFile.self,
                 Conversation.self,

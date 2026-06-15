@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import UIKit
+import MemoryKit
 
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -7,9 +9,6 @@ struct MemoryBrowserView: View {
 
     @State private var expandedID: UUID?
     @State private var searchText: String = ""
-    @State private var showArchived = false
-
-    init() {}
 
     private var approvedMemories: [MemoryNote] {
         memories.filter { $0.isUserApproved }
@@ -84,8 +83,7 @@ struct MemoryBrowserView: View {
 
     private func deleteNotes(at offsets: IndexSet) {
         for index in offsets {
-            let note = filtered[index]
-            modelContext.delete(note)
+            modelContext.delete(filtered[index])
         }
         try? modelContext.save()
     }
@@ -207,5 +205,3 @@ struct MemoryNoteRow: View {
         }
     }
 }
-
-import UIKit
