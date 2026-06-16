@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import MemoryKit
 
 struct MessageBubble: View {
     let message: ChatMessage
@@ -55,9 +57,7 @@ struct MessageBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contextMenu {
             if !isUser {
-                Button("Save to memory", systemImage: "brain") {
-                    onSaveToMemory()
-                }
+                Button("Save to memory", systemImage: "brain") { onSaveToMemory() }
             }
             Button("Copy", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = message.content
@@ -115,5 +115,3 @@ private struct ThinkingDot: View {
             }
     }
 }
-
-import UIKit

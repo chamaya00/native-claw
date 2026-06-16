@@ -10,6 +10,36 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
 
 -----
 
+## Status (live)
+
+- **Phase 0 — built.** Modular skeleton (§D), `AvailabilityService` with a normalised
+  state + graceful fallback UI, on-device round-trip via the conversation core, CI to
+  TestFlight preserved (Xcode-26 selection, XcodeGen, Fastlane).
+- **Phase 1 — built.** `ConversationEngine` (streaming partial-snapshot turns, tool
+  dispatch, SwiftData persistence), `PersonaStore`, `ContextBudget` (usage estimate →
+  ~70% summarisation → typed re-seat on `.exceededContextWindowSize`), central
+  `ApprovalGate`, and the first mutating *system* tool `createReminder` (EventKit,
+  approval-gated). The pre-existing Claw memory tools, onboarding, and chat/memory UI
+  were carried over into the new modules; `AgentService`, dead `Haptics`/animation
+  helpers, and the unused `ImagePlayground` dependency were deprecated and removed.
+
+**Deviations from the letter of this plan (intentional):**
+
+1. **Modules are XcodeGen framework targets, not separate `Package.swift` packages.**
+   This gives the same §D module isolation and enforced `import` boundaries while
+   keeping one CI-driven spec and one deployment target — avoiding per-package
+   platform/tools-version wiring that can't be verified without a Mac. Re-splitting
+   into SPM packages later is mechanical.
+2. **App target/scheme stay named `LLMChat`** (product name "Claw") so the existing
+   build/deploy/generate workflows and Fastlane lanes keep working unchanged.
+3. **`ContextBudget` uses a deterministic chars/4 token estimate** in Phase 1. The
+   call site is the single seam to swap in the framework's exact token APIs alongside
+   the Evaluations harness in Phase 4.
+4. **`ModelRouter` is deferred to Phase 4** (where it earns its keep) rather than
+   shipped as a Phase-1 stub.
+
+-----
+
 ## A. How Claude Code should use this document
 
 1. **Work one phase at a time, top to bottom.** Each phase is a shippable unit with explicit **Acceptance Criteria**. Do not start a phase until the previous phase’s criteria pass on a real device via TestFlight.

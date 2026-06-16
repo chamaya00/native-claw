@@ -1,5 +1,7 @@
 import Foundation
 import SwiftData
+import MemoryKit
+import AgentKit
 
 @Observable
 @MainActor
@@ -24,27 +26,22 @@ final class OnboardingViewModel {
 
     // MARK: - Dependencies
 
-    private let agentService: AgentService
+    private let engine: ConversationEngine
     private let container: ModelContainer
 
-    // MARK: - Init
-
-    init(agentService: AgentService, container: ModelContainer) {
-        self.agentService = agentService
+    init(engine: ConversationEngine, container: ModelContainer) {
+        self.engine = engine
         self.container = container
     }
 
     // MARK: - Lifecycle
 
     func startOnboarding() async {
-        agentService.initOnboardingSession()
-
-        // Initial message — the assistant has no name or identity yet
-        let intro = ChatMessage(
+        engine.startOnboarding()
+        messages = [ChatMessage(
             role: "assistant",
             content: "Hi. I don't have a name yet, no personality, nothing. Let's fix that. What would you like to call me?"
-        )
-        messages = [intro]
+        )]
     }
 
     func sendMessage() async {
@@ -62,13 +59,12 @@ final class OnboardingViewModel {
         let placeholderID = placeholder.id
 
         do {
-            let response = try await agentService.onboardingRespond(to: text)
+            let response = try await engine.onboardingRespond(to: text)
             if let idx = messages.firstIndex(where: { $0.id == placeholderID }) {
                 messages[idx].content = response
                 messages[idx].isStreaming = false
             }
 
-            // Heuristic: if the conversation is long enough, offer to generate persona
             if messages.filter({ $0.role == "user" }).count >= 3 && personaPreview == nil {
                 await generatePersonaPreview()
             }
@@ -87,23 +83,22 @@ final class OnboardingViewModel {
 
     func generatePersonaPreview() async {
         do {
-            let (name, vibe, values, areas) = try await agentService.extractPersonaDraft()
+            let draft = try await engine.extractPersona()
 
-            var summaryParts = ["**\(name)**", "vibe: \(vibe)"]
-            if !values.isEmpty {
-                summaryParts.append("values: \(values.joined(separator: ", "))")
+            var summaryParts = ["**\(draft.name)**", "vibe: \(draft.vibe)"]
+            if !draft.values.isEmpty {
+                summaryParts.append("values: \(draft.values.joined(separator: ", "))")
             }
-            if !areas.isEmpty {
-                summaryParts.append("into: \(areas.joined(separator: ", "))")
+            if !draft.expertiseAreas.isEmpty {
+                summaryParts.append("into: \(draft.expertiseAreas.joined(separator: ", "))")
             }
 
-            let previewMessage = ChatMessage(
+            messages.append(ChatMessage(
                 role: "assistant",
                 content: "alright, got it — " + summaryParts.joined(separator: ", ") + "."
-            )
-            messages.append(previewMessage)
+            ))
 
-            try savePersona(name: name, vibe: vibe, values: values, expertiseAreas: areas)
+            try savePersona(draft)
             showSavedToast = true
             try await Task.sleep(for: .seconds(2.5))
             showSavedToast = false
@@ -115,20 +110,20 @@ final class OnboardingViewModel {
 
     // MARK: - Persist Persona
 
-    private func savePersona(name: String, vibe: String, values: [String], expertiseAreas: [String]) throws {
+    private func savePersona(_ draft: PersonaDraft) throws {
         let context = ModelContext(container)
 
-        // Remove any existing persona
-        let existing = (try? context.fetch(FetchDescriptor<Persona>())) ?? []
-        for p in existing { context.delete(p) }
+        // Replace any existing persona (Reconfigure re-runs onboarding).
+        for existing in (try? context.fetch(FetchDescriptor<Persona>())) ?? [] {
+            context.delete(existing)
+        }
 
-        let persona = Persona(
-            name: name,
-            vibe: vibe,
-            values: values,
-            expertiseAreas: expertiseAreas
-        )
-        context.insert(persona)
+        context.insert(Persona(
+            name: draft.name,
+            vibe: draft.vibe,
+            values: draft.values,
+            expertiseAreas: draft.expertiseAreas
+        ))
         try context.save()
     }
 }

@@ -10,26 +10,85 @@ settings:
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
-    PRODUCT_BUNDLE_IDENTIFIER: ${APP_IDENTIFIER}
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
 
+# ---------------------------------------------------------------------------
+# Modular architecture (IMPLEMENTATION_PLAN §D).
+#
+# Domains are split into framework targets so the agent loop, memory, and tools
+# are isolated from view code and independently buildable. We use XcodeGen
+# framework targets (rather than separate Package.swift manifests) so the whole
+# project is driven by this single spec the CI already builds, and every module
+# inherits one deployment target — avoiding per-package platform wiring that
+# can't be verified without a Mac. Module boundaries are still enforced by the
+# build system: each Kit is its own `import`-able module.
+#
+#   MemoryKit  → SwiftData models, drafts, ToolEvent, retrieval (no deps)
+#   ToolsKit   → Tool implementations           (→ MemoryKit)
+#   AgentKit   → engine, budget, persona, gate  (→ MemoryKit, ToolsKit)
+#   LLMChat    → app target / product "Claw"    (→ AgentKit, ToolsKit, MemoryKit)
+# ---------------------------------------------------------------------------
+
 targets:
+  MemoryKit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/MemoryKit/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.MemoryKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
+  ToolsKit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/ToolsKit/Sources
+    dependencies:
+      - target: MemoryKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.ToolsKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
+  AgentKit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/AgentKit/Sources
+    dependencies:
+      - target: MemoryKit
+      - target: ToolsKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.AgentKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
   LLMChat:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - Sources
-      - Resources/Assets.xcassets
+      - path: App
+      - path: Resources/Assets.xcassets
+    dependencies:
+      - target: AgentKit
+      - target: ToolsKit
+      - target: MemoryKit
     settings:
       base:
         PRODUCT_NAME: Claw
+        PRODUCT_BUNDLE_IDENTIFIER: ${APP_IDENTIFIER}
         INFOPLIST_FILE: Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
-    dependencies:
-      - sdk: ImagePlayground.framework
-        embed: false
     entitlements:
       path: LLMChat.entitlements

@@ -1,10 +1,12 @@
 import SwiftUI
 import SwiftData
+import MemoryKit
+import AgentKit
 
 struct PersonaView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var personas: [Persona]
-    let agentService: AgentService
+    let engine: ConversationEngine
     @State private var showReconfigure = false
 
     private var persona: Persona? { personas.first }
@@ -85,10 +87,9 @@ struct PersonaView: View {
             }
 
             Section {
-                Button("Propose update via chat", systemImage: "bubble.left.and.bubble.right") {
-                    // TODO: Navigate back to chat and pre-fill a "update my persona" prompt
-                }
-                .foregroundStyle(Color.accentColor)
+                Text("Ask Claw to \u{201C}be more concise\u{201D} or \u{201C}focus on X\u{201D} in chat — it will propose a persona update you can approve.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .listStyle(.insetGrouped)
@@ -118,7 +119,7 @@ struct PersonaView: View {
     private var reconfigureSheet: some View {
         NavigationStack {
             OnboardingView(
-                agentService: agentService,
+                engine: engine,
                 container: modelContext.container,
                 onComplete: { showReconfigure = false }
             )

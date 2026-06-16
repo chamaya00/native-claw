@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import MemoryKit
 
 #if canImport(FoundationModels)
 import FoundationModels
@@ -7,8 +8,8 @@ import FoundationModels
 // MARK: - 1. searchMemory
 
 struct SearchMemoryTool: Tool {
-    static let name = "searchMemory"
-    let name = SearchMemoryTool.name
+    static let toolName = "searchMemory"
+    let name = SearchMemoryTool.toolName
     let description = "Search saved memory notes for relevant context. Use this proactively before answering questions about the user's interests, goals, or past conversations."
 
     @Generable
@@ -54,8 +55,8 @@ struct SearchMemoryTool: Tool {
 // MARK: - 2. saveMemoryNote
 
 struct SaveMemoryNoteTool: Tool {
-    static let name = "saveMemoryNote"
-    let name = SaveMemoryNoteTool.name
+    static let toolName = "saveMemoryNote"
+    let name = SaveMemoryNoteTool.toolName
     let description = "Propose saving a synthesized insight to memory. The user must confirm before it is written. Use for genuinely valuable, durable takeaways — not raw quotes."
 
     @Generable
@@ -101,8 +102,8 @@ struct SaveMemoryNoteTool: Tool {
 // MARK: - 3. updateMemoryNote
 
 struct UpdateMemoryNoteTool: Tool {
-    static let name = "updateMemoryNote"
-    let name = UpdateMemoryNoteTool.name
+    static let toolName = "updateMemoryNote"
+    let name = UpdateMemoryNoteTool.toolName
     let description = "Propose updating an existing memory note with refined information. The user must confirm before changes are written."
 
     @Generable
@@ -160,8 +161,8 @@ struct UpdateMemoryNoteTool: Tool {
 // MARK: - 4. readPersona
 
 struct ReadPersonaTool: Tool {
-    static let name = "readPersona"
-    let name = ReadPersonaTool.name
+    static let toolName = "readPersona"
+    let name = ReadPersonaTool.toolName
     let description = "Read the current Claw persona — name, vibe, values, and expertise areas."
 
     @Generable
@@ -197,8 +198,8 @@ struct ReadPersonaTool: Tool {
 // MARK: - 5. proposePersonaUpdate
 
 struct ProposePersonaUpdateTool: Tool {
-    static let name = "proposePersonaUpdate"
-    let name = ProposePersonaUpdateTool.name
+    static let toolName = "proposePersonaUpdate"
+    let name = ProposePersonaUpdateTool.toolName
     let description = "Propose updating the Claw persona. Use when the user says 'be more concise', 'focus on X', or requests a personality change. User must confirm."
 
     @Generable
@@ -233,8 +234,8 @@ struct ProposePersonaUpdateTool: Tool {
 // MARK: - 6. listImportedFiles
 
 struct ListImportedFilesTool: Tool {
-    static let name = "listImportedFiles"
-    let name = ListImportedFilesTool.name
+    static let toolName = "listImportedFiles"
+    let name = ListImportedFilesTool.toolName
     let description = "List all files the user has imported. Use to discover what context files are available before referencing them."
 
     @Generable
@@ -270,8 +271,8 @@ struct ListImportedFilesTool: Tool {
 // MARK: - 7. readImportedFile
 
 struct ReadImportedFileTool: Tool {
-    static let name = "readImportedFile"
-    let name = ReadImportedFileTool.name
+    static let toolName = "readImportedFile"
+    let name = ReadImportedFileTool.toolName
     let description = "Read the full text content of an imported file by its ID. Use when the user references a file or when a file is clearly relevant to their question."
 
     private static let maxChars = 4000
@@ -323,96 +324,6 @@ struct ReadImportedFileTool: Tool {
         }
         return "Filename: \(filename)\n\n\(text)"
     }
-}
-
-// MARK: - Helper: memory text search
-
-func searchMemories(query: String, context: ModelContext, limit: Int) -> [MemoryNote] {
-    let descriptor = FetchDescriptor<MemoryNote>(
-        predicate: #Predicate { $0.isUserApproved == true },
-        sortBy: [
-            SortDescriptor(\.importanceScore, order: .reverse),
-            SortDescriptor(\.updatedAt, order: .reverse)
-        ]
-    )
-    let all = (try? context.fetch(descriptor)) ?? []
-    let lower = query.lowercased()
-    let terms = lower.split(separator: " ").map(String.init)
-
-    func score(_ note: MemoryNote) -> Int {
-        var s = 0
-        for term in terms {
-            if note.title.lowercased().contains(term) { s += 3 }
-            if note.summary.lowercased().contains(term) { s += 2 }
-            for topic in note.topics where topic.lowercased().contains(term) { s += 1 }
-        }
-        return s
-    }
-
-    let scored = all.map { ($0, score($0)) }.filter { $0.1 > 0 || terms.isEmpty }
-    let sorted = scored.sorted { $0.1 > $1.1 }
-    return Array(sorted.prefix(limit).map(\.0))
-}
-
-// MARK: - Onboarding PersonaDraft (@Generable for structured extraction)
-
-@Generable
-struct PersonaDraft {
-    @Guide(description: "The name the user chose for the assistant")
-    var name: String
-
-    @Guide(description: "The desired vibe and communication style, e.g. 'chill and direct' or 'warm and encouraging'")
-    var vibe: String
-
-    @Guide(description: "Core values that should guide responses, e.g. 'concise', 'honest', 'synthesis-focused'", .maximumCount(5))
-    var values: [String]
-
-    @Guide(description: "Topics the user cares about most right now, if mentioned; empty if not", .maximumCount(8))
-    var expertiseAreas: [String]
-}
-
-// MARK: - Tool collection builder
-
-func buildTools(
-    container: ModelContainer,
-    onEvent: @escaping @MainActor @Sendable (ToolEvent) -> Void
-) -> [any Tool] {
-    [
-        SearchMemoryTool(container: container, onEvent: onEvent),
-        SaveMemoryNoteTool(onEvent: onEvent),
-        UpdateMemoryNoteTool(container: container, onEvent: onEvent),
-        ReadPersonaTool(container: container, onEvent: onEvent),
-        ProposePersonaUpdateTool(onEvent: onEvent),
-        ListImportedFilesTool(container: container, onEvent: onEvent),
-        ReadImportedFileTool(container: container, onEvent: onEvent)
-    ]
-}
-
-#else
-
-// MARK: - Stub search (available without FoundationModels for tests)
-
-func searchMemories(query: String, context: ModelContext, limit: Int) -> [MemoryNote] {
-    let descriptor = FetchDescriptor<MemoryNote>(
-        predicate: #Predicate { $0.isUserApproved == true },
-        sortBy: [SortDescriptor(\.importanceScore, order: .reverse)]
-    )
-    let all = (try? context.fetch(descriptor)) ?? []
-    let lower = query.lowercased()
-    let terms = lower.split(separator: " ").map(String.init)
-
-    func score(_ note: MemoryNote) -> Int {
-        var s = 0
-        for term in terms {
-            if note.title.lowercased().contains(term) { s += 3 }
-            if note.summary.lowercased().contains(term) { s += 2 }
-            for topic in note.topics where topic.lowercased().contains(term) { s += 1 }
-        }
-        return s
-    }
-
-    let scored = all.map { ($0, score($0)) }.filter { $0.1 > 0 || terms.isEmpty }
-    return Array(scored.sorted { $0.1 > $1.1 }.prefix(limit).map(\.0))
 }
 
 #endif
