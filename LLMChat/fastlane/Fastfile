@@ -138,4 +138,28 @@ platform :ios do
     # Remove the temporary keychain regardless of success or failure
     delete_keychain(name: keychain_name) if keychain_name
   end
+
+  # ───────────────────────────────────────────
+  # Friendlier diagnostics for common, non-code failures
+  # ───────────────────────────────────────────
+  error do |lane, exception|
+    message = exception.message.to_s
+
+    # App Store Connect returns this whenever a legal agreement (Apple Developer
+    # Program License Agreement, or the Paid/Free Apps Agreement) is unsigned or
+    # expired. It is an account-level block, not a build problem — no Fastfile
+    # change can bypass it, so surface clear remediation steps in the CI log.
+    if message.include?("in-effect agreement") || message.include?("required agreement")
+      UI.error("──────────────────────────────────────────────────────────────")
+      UI.error("App Store Connect rejected the request: a required agreement is")
+      UI.error("missing or has expired.")
+      UI.error("")
+      UI.error("This is an account-level block, not a code issue. To resolve:")
+      UI.error("  1. Sign in to https://appstoreconnect.apple.com as the Account Holder.")
+      UI.error("  2. Open Business > Agreements (and Membership in the Developer")
+      UI.error("     portal) and accept any pending agreement.")
+      UI.error("  3. Re-run this workflow.")
+      UI.error("──────────────────────────────────────────────────────────────")
+    end
+  end
 end
