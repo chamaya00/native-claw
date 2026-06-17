@@ -42,6 +42,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.MemoryKit
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
+        # Frameworks must NOT carry a provisioning profile — Xcode rejects the
+        # archive with "<Target> does not support provisioning profiles". They
+        # are manually signed with the distribution identity (no profile) and
+        # then re-signed with the app's identity during the embed phase. This
+        # also avoids Automatic signing, which can't run in a match-based CI
+        # where no Apple ID is logged into Xcode.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: ""
 
   ToolsKit:
     type: framework
@@ -56,6 +65,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.ToolsKit
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
+        # See MemoryKit: frameworks are manually signed without a profile.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: ""
 
   AgentKit:
     type: framework
@@ -71,6 +84,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.AgentKit
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
+        # See MemoryKit: frameworks are manually signed without a profile.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: ""
 
   LLMChat:
     type: application

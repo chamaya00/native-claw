@@ -115,9 +115,10 @@ platform :ios do
     # Scope this to the LLMChat app target only. The MemoryKit/ToolsKit/AgentKit
     # framework targets do not support provisioning profiles — assigning one
     # makes Xcode 26 fail the archive with "<Target> does not support
-    # provisioning profiles". Embedded frameworks are automatically re-signed
-    # with the app's signing identity during the embed phase, so they need no
-    # profile of their own.
+    # provisioning profiles". Restricting `targets:` here ensures the profile is
+    # never written onto a framework. The frameworks declare their own manual,
+    # profile-less signing in project.yml and are re-signed with the app's
+    # identity during the embed phase, so they need no profile of their own.
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "LLMChat.xcodeproj",
