@@ -110,13 +110,21 @@ platform :ios do
       xcodeproj: "LLMChat.xcodeproj"
     )
 
-    # Configure manual signing to use the match-provisioned profiles
+    # Configure manual signing to use the match-provisioned profiles.
+    #
+    # Scope this to the LLMChat app target only. The MemoryKit/ToolsKit/AgentKit
+    # framework targets do not support provisioning profiles — assigning one
+    # makes Xcode 26 fail the archive with "<Target> does not support
+    # provisioning profiles". Embedded frameworks are automatically re-signed
+    # with the app's signing identity during the embed phase, so they need no
+    # profile of their own.
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "LLMChat.xcodeproj",
       team_id: ENV["APP_STORE_TEAM_ID"],
       code_sign_identity: "iPhone Distribution",
-      profile_name: ENV["sigh_#{ENV['APP_IDENTIFIER']}_appstore_profile-name"]
+      profile_name: ENV["sigh_#{ENV['APP_IDENTIFIER']}_appstore_profile-name"],
+      targets: ["LLMChat"]
     )
 
     gym(
