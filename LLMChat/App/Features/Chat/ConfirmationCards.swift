@@ -132,6 +132,38 @@ struct PersonaUpdateConfirmationCard: View {
     }
 }
 
+// MARK: - Calendar Event Confirmation Card
+
+struct CalendarEventConfirmationCard: View {
+    let draft: CalendarEventDraft
+    let onConfirm: () -> Void
+    let onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Add this event?", systemImage: "calendar.badge.plus")
+                .font(.subheadline.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 4) {
+                DiffRow(label: "Title", value: draft.title)
+                DiffRow(label: "Start", value: draft.startText)
+                if let end = draft.endText { DiffRow(label: "End", value: end) }
+                if let location = draft.location { DiffRow(label: "Where", value: location) }
+                if let notes = draft.notes { DiffRow(label: "Notes", value: notes) }
+            }
+
+            ConfirmActionButtons(
+                discardTitle: "Discard",
+                confirmTitle: "Add",
+                confirmColor: .green,
+                onDiscard: onDiscard,
+                onConfirm: onConfirm
+            )
+        }
+        .cardStyle(border: Color.green.opacity(0.3))
+    }
+}
+
 // MARK: - Shared building blocks
 
 struct DiffRow: View {

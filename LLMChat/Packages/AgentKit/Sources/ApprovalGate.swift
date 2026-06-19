@@ -18,6 +18,7 @@ public final class ApprovalGate {
     public var pendingMemoryUpdate: MemoryUpdateDraft?
     public var pendingPersonaUpdate: PersonaUpdateDraft?
     public var pendingReminder: ReminderDraft?
+    public var pendingCalendarEvent: CalendarEventDraft?
 
     private let container: ModelContainer
     private let eventStore = EKEventStore()
@@ -43,6 +44,9 @@ public final class ApprovalGate {
         case .pendingReminder(let draft):
             pendingReminder = draft
             return true
+        case .pendingCalendarEvent(let draft):
+            pendingCalendarEvent = draft
+            return true
         case .toolStarted, .toolCompleted:
             return false
         }
@@ -53,6 +57,7 @@ public final class ApprovalGate {
         pendingMemoryUpdate = nil
         pendingPersonaUpdate = nil
         pendingReminder = nil
+        pendingCalendarEvent = nil
     }
 
     // MARK: - Memory note
@@ -121,6 +126,9 @@ public final class ApprovalGate {
     public enum ReminderError: LocalizedError {
         case accessDenied
         case noDefaultList
+        case calendarAccessDenied
+        case noDefaultCalendar
+        case unparsableStart
 
         public var errorDescription: String? {
             switch self {
@@ -128,6 +136,12 @@ public final class ApprovalGate {
                 return "Claw needs access to Reminders to create this. Allow it in Settings → Privacy → Reminders."
             case .noDefaultList:
                 return "No default Reminders list is configured on this device."
+            case .calendarAccessDenied:
+                return "Claw needs access to Calendars to add this event. Allow it in Settings → Privacy → Calendars."
+            case .noDefaultCalendar:
+                return "No default calendar is configured on this device."
+            case .unparsableStart:
+                return "Couldn't understand the event's start time. Try rephrasing it (e.g. 'tomorrow at 2pm')."
             }
         }
     }
@@ -158,6 +172,37 @@ public final class ApprovalGate {
     }
 
     public func discardReminder() { pendingReminder = nil }
+
+    // MARK: - Calendar event (EventKit)
+
+    public func confirmCalendarEvent() async throws {
+        guard let draft = pendingCalendarEvent else { return }
+
+        let granted = try await eventStore.requestFullAccessToEvents()
+        guard granted else { throw ReminderError.calendarAccessDenied }
+        guard let calendar = eventStore.defaultCalendarForNewEvents else {
+            throw ReminderError.noDefaultCalendar
+        }
+        guard let start = Self.detectDate(in: draft.startText) else {
+            throw ReminderError.unparsableStart
+        }
+
+        let end = draft.endText.flatMap { Self.detectDate(in: $0) }
+            ?? start.addingTimeInterval(3600)
+
+        let event = EKEvent(eventStore: eventStore)
+        event.title = draft.title
+        event.location = draft.location
+        event.notes = draft.notes
+        event.startDate = start
+        event.endDate = max(end, start.addingTimeInterval(300))
+        event.calendar = calendar
+
+        try eventStore.save(event, span: .thisEvent, commit: true)
+        pendingCalendarEvent = nil
+    }
+
+    public func discardCalendarEvent() { pendingCalendarEvent = nil }
 
     /// Parse a natural-language due date ("tomorrow at 9am") into a concrete date.
     private static func detectDate(in text: String) -> Date? {
