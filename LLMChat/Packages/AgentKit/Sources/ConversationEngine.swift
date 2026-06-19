@@ -173,8 +173,8 @@ public final class ConversationEngine {
     ) async throws -> String {
         var latest = ""
         for try await partial in session.streamResponse(to: text) {
-            latest = partial
-            continuation.yield(partial)
+            latest = partial.content
+            continuation.yield(partial.content)
         }
         return latest
     }
