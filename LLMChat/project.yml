@@ -26,9 +26,10 @@ settings:
 #
 #   MemoryKit   → SwiftData models, drafts, ToolEvent, retrieval, routing policy (no deps)
 #   ToolsKit    → Tool implementations            (→ MemoryKit)
-#   AgentKit    → engine, budget, persona, gate, model router (→ MemoryKit, ToolsKit)
+#   AgentKit    → engine, budget, persona, gate, model router, profiles (→ MemoryKit, ToolsKit)
+#   SkillsKit   → declarative skills, runner, App Intents/Shortcuts (→ MemoryKit, AgentKit)
 #   EvalHarness → assistant eval suite + runner   (→ AgentKit, MemoryKit)
-#   LLMChat     → app target / product "Claw"     (→ AgentKit, ToolsKit, MemoryKit, EvalHarness)
+#   LLMChat     → app target / product "Claw"     (→ AgentKit, ToolsKit, MemoryKit, SkillsKit, EvalHarness)
 # ---------------------------------------------------------------------------
 
 targets:
@@ -73,6 +74,21 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
 
+  SkillsKit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/SkillsKit/Sources
+    dependencies:
+      - target: MemoryKit
+      - target: AgentKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.SkillsKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
   EvalHarness:
     type: framework
     platform: iOS
@@ -99,6 +115,7 @@ targets:
       - target: AgentKit
       - target: ToolsKit
       - target: MemoryKit
+      - target: SkillsKit
       - target: EvalHarness
     settings:
       base:

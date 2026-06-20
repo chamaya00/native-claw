@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import MemoryKit
 import AgentKit
+import SkillsKit
 
 /// Root view. Gates on (1) model availability, then (2) whether a Persona exists:
 /// - unavailable      → AvailabilityUnavailableView (Phase 0 graceful fallback)
@@ -38,6 +39,11 @@ struct ContentView: View {
             if engine == nil {
                 engine = ConversationEngine(container: modelContext.container)
             }
+            // Make approved skills resolvable by the system (Siri/Spotlight/Shortcuts) and
+            // reconcile their Spotlight index once per launch — picks up skills mirrored in
+            // from another device since last run (§Phase 6, mirrors the memory bridge).
+            SkillEntityBridge.register(container: modelContext.container)
+            SkillSpotlightIndexer.reindexAll(container: modelContext.container)
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {

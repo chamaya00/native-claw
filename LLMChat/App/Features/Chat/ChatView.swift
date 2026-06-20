@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var showPersonaView = false
     @State private var showRoutingSettings = false
     @State private var showSuggestions = false
+    @State private var showSkills = false
     @State private var showFilePicker = false
     @State private var showPhotoPicker = false
     @State private var selectedPhoto: PhotosPickerItem?
@@ -26,6 +27,7 @@ struct ChatView: View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
+                    if viewModel.isResearchMode { researchBanner }
                     messageList
                     Divider()
                     inputBar
@@ -45,6 +47,7 @@ struct ChatView: View {
             .navigationDestination(isPresented: $showPersonaView) { PersonaView(engine: engine) }
             .navigationDestination(isPresented: $showRoutingSettings) { RoutingSettingsView(engine: engine) }
             .navigationDestination(isPresented: $showSuggestions) { SuggestionInboxView() }
+            .navigationDestination(isPresented: $showSkills) { SkillsView() }
             .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: [.plainText, .pdf, .rtf],
@@ -279,6 +282,24 @@ struct ChatView: View {
         .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
     }
 
+    // MARK: - Research Banner
+
+    private var researchBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.purple)
+            Text("Research mode — this thread stays separate from your chat.")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Exit") { viewModel.toggleResearchMode() }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.purple)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.purple.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
     // MARK: - Error Banner
 
     private func errorBanner(message: String) -> some View {
@@ -309,7 +330,15 @@ struct ChatView: View {
 
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
+                Toggle(isOn: Binding(
+                    get: { viewModel.isResearchMode },
+                    set: { _ in viewModel.toggleResearchMode() }
+                )) {
+                    Label("Research mode", systemImage: "magnifyingglass")
+                }
+                Divider()
                 Button("Memory", systemImage: "brain") { showMemoryBrowser = true }
+                Button("Skills", systemImage: "wand.and.rays") { showSkills = true }
                 Button("Suggestions", systemImage: "wand.and.stars") { showSuggestions = true }
                 Button("Model routing", systemImage: "arrow.triangle.branch") { showRoutingSettings = true }
                 Button("Import file", systemImage: "doc.badge.plus") { showFilePicker = true }
