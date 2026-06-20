@@ -45,6 +45,9 @@ struct ContentView: View {
                 engine?.availability.refresh()
             case .background:
                 engine?.invalidate()
+                // Re-arm the briefing schedule on the way out if any routine is approved
+                // (§Phase 5). Idempotent; no-op when there's nothing to schedule.
+                ProactivityScheduler.scheduleIfNeeded(container: modelContext.container)
             default:
                 break
             }

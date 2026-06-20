@@ -64,6 +64,25 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   `EvalHarness` target ships the `AssistantEvalSuite` (extraction, classification,
   summarisation, reasoning) + an `EvalRunner` that grades greedy-sampled output and
   reports pass-rate/latency per tier.
+- **Phase 5 — built.** Preference learning + opt-in proactivity. A `PreferenceLearner`
+  (`AgentKit`) occasionally offers an **A/B style picker**: two variants of the user's
+  actual answer that differ on one rotating axis (length / warmth) via distinct
+  `GenerationOptions` + instruction deltas, generated on-device off the streaming path
+  behind a hard 6-hour frequency cap and always skippable. The pick is stored as a
+  `PreferencePair` and folded into an approved `UserPref` (keyed `style.*`), which
+  `PersonaStore` injects into the session instructions; the engine re-seats so the new
+  style applies immediately. A `RoutineSuggester` runs a periodic on-device pass that
+  distils **suggested routines** from recurring patterns into an **in-app inbox** (never a
+  push) — written `status == "suggested"`, deduped against every known routine including
+  dismissed ones, so a dismissal is a durable negative signal. The new
+  `Features/Suggestions` surfaces the inbox (approve / edit / dismiss / pause) and the
+  picker card. Approving a routine requests notification permission (progressive,
+  value-framed) and arms a `BGAppRefreshTaskRequest`; the SwiftUI
+  `.backgroundTask(.appRefresh:)` handler runs `BriefingService` — today's calendar (read,
+  no approval) + top memories, routed as a `.briefing` task through `ModelRouter` — and
+  delivers the brief via `UNUserNotificationCenter`. Only approved routines schedule or
+  notify. New Info.plist `UIBackgroundModes` (`fetch`, `processing`) +
+  `BGTaskSchedulerPermittedIdentifiers`.
 
 **Deviations from the letter of this plan (intentional):**
 
@@ -135,6 +154,27 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
     keyword/structure check. The runner measures the on-device tier for real and records
     cloud tiers as *pending binding*, so the report shows the on-device/PCC boundary
     truthfully rather than fabricating a PCC number.
+14. **The preference picker probes the user's real prompt, off the streaming path.** Rather
+    than fork the live chat into a dual stream (which would double every turn's latency on a
+    3B model), the learner regenerates two variants of the *just-asked* prompt after the
+    turn completes, behind a 6-hour cap, and surfaces them as a card. This collects the same
+    explicit taste signal the plan calls for without taxing the hot path or destabilising
+    the streaming UI.
+15. **Suggestion approval/dismissal is structural via `SuggestedRoutine.status`, not a
+    separate queue.** "Propose-then-approve" is realised as `suggested → approved /
+    dismissed` on the synced model: dismissed rows are *kept* as a durable negative signal
+    so the suggester never re-proposes them, and only `approved` routines arm a schedule or
+    notify. This mirrors the Phase-3 review-inbox pattern and survives launches/devices.
+16. **Background work uses SwiftUI `.backgroundTask(.appRefresh:)`, not an `AppDelegate`
+    `BGTaskScheduler.register`.** It's the same `BGAppRefreshTaskRequest` mechanism (the
+    only native unattended path, best-effort not cron) with the modern registration surface,
+    avoiding an `UIApplicationDelegate` just for one handler. The honest caveat stands: iOS
+    decides when (and whether) the brief runs.
+17. **`BriefingService` routes through `ModelRouter` but generates on-device.** The brief is
+    a `.briefing` task, so it inherits the full Phase-4 policy (privacy lock, PCC metering,
+    transparency) — but since the cloud-tier binding is still the documented seam (deviation
+    11), the bound tier is on-device. The 4K window is enough for a calendar+memory digest;
+    when PCC binding lands, larger syntheses escalate with no call-site change.
 
 -----
 

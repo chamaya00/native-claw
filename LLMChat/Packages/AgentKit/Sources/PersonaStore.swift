@@ -23,6 +23,7 @@ public struct PersonaStore {
     public func systemInstructions(
         persona: Persona?,
         topMemories: [MemoryNote],
+        stylePrefs: [UserPref] = [],
         condensedSummary: String? = nil
     ) -> String {
         var prompt = """
@@ -54,6 +55,16 @@ public struct PersonaStore {
             prompt += "\n\nRecent context from memory:\n"
             for memory in topMemories {
                 prompt += "- \(memory.title): \(memory.summary)\n"
+            }
+        }
+
+        // Learned style preferences from the A/B picker (§Phase 5). Folded in so a pick
+        // measurably shifts how the assistant writes, not just what it knows.
+        if !stylePrefs.isEmpty {
+            prompt += "\n\nLearned style preferences (apply consistently):\n"
+            for pref in stylePrefs {
+                let axis = pref.key.replacingOccurrences(of: "style.", with: "")
+                prompt += "- \(axis): \(pref.value)\n"
             }
         }
 

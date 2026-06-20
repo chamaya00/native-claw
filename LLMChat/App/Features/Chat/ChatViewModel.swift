@@ -173,6 +173,20 @@ final class ChatViewModel {
     }
     func discardCalendarEvent() { approvalGate.discardCalendarEvent() }
 
+    // MARK: - Preference Picker (Phase 5)
+
+    /// The pending A/B style choice, surfaced as a card under the chat.
+    var pendingPreferenceChoice: PreferenceChoice? { engine.preferenceLearner.pendingChoice }
+
+    /// Record the user's pick and re-seat the session so the learned style applies right away.
+    func choosePreference(pickedA: Bool) {
+        guard let choice = engine.preferenceLearner.pendingChoice else { return }
+        engine.preferenceLearner.record(choice: choice, pickedA: pickedA)
+        Task { await engine.applyLearnedPreferences() }
+    }
+
+    func skipPreference() { engine.preferenceLearner.skip() }
+
     // MARK: - Conversation Management
 
     func clearConversation() {
