@@ -34,6 +34,9 @@ public final class ConversationEngine {
     public let availability: AvailabilityService
     public let approvalGate: ApprovalGate
     public let router: ModelRouter
+    /// Offers occasional A/B style choices and records the winner (§Phase 5). Observed by
+    /// the chat UI, which renders `pendingChoice` as a card.
+    public let preferenceLearner: PreferenceLearner
     public var toolIndicator: String?
     public private(set) var currentConversationID: UUID?
 
@@ -52,14 +55,19 @@ public final class ConversationEngine {
     private let container: ModelContainer
     private let personaStore: PersonaStore
     private let memoryManager: MemoryManager
+    private let routineSuggester: RoutineSuggester
     private let budget = ContextBudget()
     private var usedTokens = 0
 
     /// How many assistant turns have elapsed since the last curation pass. Curation is
     /// run periodically (not every turn) to amortise the extra model call (§Phase 3).
     private var turnsSinceCuration = 0
+    /// Same idea for routine suggestion (§Phase 5), at a longer cadence — patterns need a
+    /// few turns to emerge and the pass is purely opportunistic.
+    private var turnsSinceSuggestion = 0
     private var didReindexSpotlight = false
     private static let curationInterval = 4
+    private static let suggestionInterval = 6
 
     /// The tool names currently attached to the live session. Dynamic tool selection
     /// only *grows* this set when a turn needs a tool that isn't attached yet — so a
@@ -79,8 +87,10 @@ public final class ConversationEngine {
         self.availability = AvailabilityService()
         self.approvalGate = ApprovalGate(container: container)
         self.router = ModelRouter(container: container)
+        self.preferenceLearner = PreferenceLearner(container: container)
         self.personaStore = PersonaStore(container: container)
         self.memoryManager = MemoryManager(container: container)
+        self.routineSuggester = RoutineSuggester(container: container)
         // Make stored memory resolvable by the system (Spotlight/Siri) — App Intents
         // queries are created by the OS and can't see the injected container otherwise.
         MemoryEntityBridge.register(container: container)
@@ -136,9 +146,11 @@ public final class ConversationEngine {
         let context = ModelContext(container)
         let persona = personaStore.currentPersona()
         let recent = searchMemories(query: "recent context active goals", context: context, limit: 3)
+        let stylePrefs = approvedStylePrefs(context: context)
         let instructions = personaStore.systemInstructions(
             persona: persona,
             topMemories: recent,
+            stylePrefs: stylePrefs,
             condensedSummary: condensedSummary
         )
         session = LanguageModelSession(
@@ -221,6 +233,8 @@ public final class ConversationEngine {
         lastTurnToolCalls = turnToolCalls
         persist(role: "assistant", content: finalText, toolCalls: turnToolCalls)
         maybeCurateMemory()
+        maybeSuggestRoutines()
+        maybeOfferPreference(for: text)
 #else
         let stub = "⚠️ Foundation Models is not available in this build. Run on a device with Apple Intelligence enabled."
         continuation.yield(stub)
@@ -260,6 +274,37 @@ public final class ConversationEngine {
     private func reseatWithSummary() async {
         let summary = (try? await budget.summarize(messages: fetchRecentMessages(limit: 20))) ?? ""
         buildSession(condensedSummary: summary.isEmpty ? nil : summary)
+    }
+
+    /// Periodically propose routines from recurring patterns (§Phase 5). Like curation, this
+    /// runs off the streaming path, self-limits, and never blocks the turn or surfaces
+    /// failures — candidates land in the in-app suggestion inbox, never a push.
+    private func maybeSuggestRoutines() {
+        turnsSinceSuggestion += 1
+        guard turnsSinceSuggestion >= Self.suggestionInterval else { return }
+        turnsSinceSuggestion = 0
+        let recent = fetchRecentMessages(limit: 16)
+        let suggester = routineSuggester
+        Task { @MainActor in
+            await suggester.suggest(recentMessages: recent)
+        }
+    }
+
+    /// Occasionally offer an A/B style choice for the turn just taken (§Phase 5). The learner
+    /// enforces its own frequency cap, so this is safe to call every turn; the choice surfaces
+    /// via `preferenceLearner.pendingChoice`, which the chat UI observes.
+    private func maybeOfferPreference(for text: String) {
+        let learner = preferenceLearner
+        Task { @MainActor in
+            await learner.maybeOffer(for: text)
+        }
+    }
+
+    /// Re-seat the session so a freshly-recorded style preference takes effect immediately,
+    /// preserving conversation continuity via the condensed summary (§Phase 5 acceptance:
+    /// picks measurably shift response style).
+    public func applyLearnedPreferences() async {
+        await reseatWithSummary()
     }
 
     // MARK: - Onboarding

@@ -10,6 +10,7 @@ struct ChatView: View {
     @State private var showMemoryBrowser = false
     @State private var showPersonaView = false
     @State private var showRoutingSettings = false
+    @State private var showSuggestions = false
     @State private var showFilePicker = false
     @State private var showPhotoPicker = false
     @State private var selectedPhoto: PhotosPickerItem?
@@ -43,6 +44,7 @@ struct ChatView: View {
             .navigationDestination(isPresented: $showMemoryBrowser) { MemoryBrowserView() }
             .navigationDestination(isPresented: $showPersonaView) { PersonaView(engine: engine) }
             .navigationDestination(isPresented: $showRoutingSettings) { RoutingSettingsView(engine: engine) }
+            .navigationDestination(isPresented: $showSuggestions) { SuggestionInboxView() }
             .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: [.plainText, .pdf, .rtf],
@@ -107,6 +109,7 @@ struct ChatView: View {
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingPersonaUpdate?.id)
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingReminder?.id)
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingCalendarEvent?.id)
+                .animation(.spring(duration: 0.3), value: viewModel.pendingPreferenceChoice?.id)
             }
             .onChange(of: viewModel.messages.count) {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -167,6 +170,16 @@ struct ChatView: View {
             )
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .id("pendingCalendarEvent")
+        }
+
+        if let choice = viewModel.pendingPreferenceChoice {
+            PreferenceChoiceCard(
+                choice: choice,
+                onPick: { pickedA in viewModel.choosePreference(pickedA: pickedA) },
+                onSkip: { viewModel.skipPreference() }
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .id("pendingPreferenceChoice")
         }
     }
 
@@ -297,6 +310,7 @@ struct ChatView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Button("Memory", systemImage: "brain") { showMemoryBrowser = true }
+                Button("Suggestions", systemImage: "wand.and.stars") { showSuggestions = true }
                 Button("Model routing", systemImage: "arrow.triangle.branch") { showRoutingSettings = true }
                 Button("Import file", systemImage: "doc.badge.plus") { showFilePicker = true }
                 Divider()

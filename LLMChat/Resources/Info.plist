@@ -33,6 +33,12 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.charlesamaya.llmchat.briefing</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
