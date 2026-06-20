@@ -35,10 +35,15 @@ public struct MemoryFactEntity: IndexedEntity {
     public var topics: [String]
 
     public init(id: UUID, title: String, summary: String, topics: [String]) {
+        // Assign the plain stored properties (`id`, `topics`) before the
+        // `@Property`-wrapped ones. The AppIntents `@Property` setter accesses
+        // `self`, so Swift's definite-initialization requires every non-wrapped
+        // stored property to be initialized first — otherwise the wrapped
+        // assignment trips "variable 'self.topics' used before being initialized".
         self.id = id
+        self.topics = topics
         self.title = title
         self.summary = summary
-        self.topics = topics
     }
 
     public init(note: MemoryNote) {
