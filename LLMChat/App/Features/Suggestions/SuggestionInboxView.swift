@@ -198,8 +198,10 @@ private struct RoutineEditSheet: View {
                 Section("Name") {
                     TextField("Routine name", text: $title)
                 }
-                Section("Schedule") {
+                Section {
                     TextField("e.g. weekdays 8am", text: $scheduleHint)
+                } header: {
+                    Text("Schedule")
                 } footer: {
                     Text("A natural-language hint. Briefings currently run around 8am when iOS allows background work.")
                 }
