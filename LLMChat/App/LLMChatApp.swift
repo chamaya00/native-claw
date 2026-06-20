@@ -7,17 +7,9 @@ struct ClawApp: App {
     let container: ModelContainer
 
     init() {
-        do {
-            container = try ModelContainer(
-                for: Persona.self,
-                MemoryNote.self,
-                ImportedFile.self,
-                Conversation.self,
-                Message.self
-            )
-        } catch {
-            fatalError("Failed to create SwiftData ModelContainer: \(error)")
-        }
+        // CloudKit-mirrored memory store (§Phase 3); falls back to local-only if the
+        // iCloud-container entitlement isn't present on this build.
+        container = MemoryContainer.make()
     }
 
     var body: some Scene {
