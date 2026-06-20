@@ -94,6 +94,8 @@ final class ChatViewModel {
             if let idx = messages.firstIndex(where: { $0.id == placeholderID }) {
                 messages[idx].isStreaming = false
                 messages[idx].toolCallsMade = engine.lastTurnToolCalls
+                messages[idx].tierLabel = engine.lastResponseTier?.shortLabel
+                messages[idx].tierSystemImage = engine.lastResponseTier?.systemImage
             }
         } catch {
             if let idx = messages.firstIndex(where: { $0.id == placeholderID }) {

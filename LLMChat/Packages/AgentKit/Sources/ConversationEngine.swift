@@ -33,8 +33,13 @@ public final class ConversationEngine {
 
     public let availability: AvailabilityService
     public let approvalGate: ApprovalGate
+    public let router: ModelRouter
     public var toolIndicator: String?
     public private(set) var currentConversationID: UUID?
+
+    /// The tier that backed the most recent assistant turn, surfaced as a transparency
+    /// chip so the user always knows where their data went (§Phase 4).
+    public private(set) var lastResponseTier: ModelTier?
 
     /// Tools that actually ran during the most recent turn (cleaned labels), surfaced
     /// to the UI as tool-call chips under the assistant bubble (§Phase 2).
@@ -73,6 +78,7 @@ public final class ConversationEngine {
         self.container = container
         self.availability = AvailabilityService()
         self.approvalGate = ApprovalGate(container: container)
+        self.router = ModelRouter(container: container)
         self.personaStore = PersonaStore(container: container)
         self.memoryManager = MemoryManager(container: container)
         // Make stored memory resolvable by the system (Spotlight/Siri) — App Intents
@@ -178,7 +184,14 @@ public final class ConversationEngine {
         turnToolCalls = []
         lastTurnToolCalls = []
 
+        // Route the turn (§Phase 4): pick the model tier from policy + token pressure, and
+        // budget against *that* tier's window. Pure policy — safe outside the FM gate.
+        let resolution = router.resolve(task: .chat, estimatedPromptTokens: usedTokens)
+        lastResponseTier = resolution.boundTier
+
 #if canImport(FoundationModels)
+        let activeBudget = ContextBudget(contextSize: resolution.contextSize)
+
         // Dynamic tool selection (§Phase 2): grow the attached tool set only when this
         // turn plausibly needs a tool we haven't attached yet, then re-seat the session.
         let needed = attachedToolNames.union(
@@ -188,7 +201,7 @@ public final class ConversationEngine {
 
         // Proactively summarise before we risk overflowing the window. Re-seating also
         // rebuilds the session, so fold a needed tool-set change into the same rebuild.
-        if budget.shouldSummarize(usedTokens: usedTokens) || toolsChanged {
+        if activeBudget.shouldSummarize(usedTokens: usedTokens) || toolsChanged {
             attachedToolNames = needed
             await reseatWithSummary()
         }

@@ -127,12 +127,20 @@ public struct ChatMessage: Identifiable, Sendable {
     public var timestamp: Date
     public var isStreaming: Bool
 
+    /// The model tier that produced an assistant turn, as a compact label + SF Symbol
+    /// (e.g. "On-device" / "iphone"). Plain strings rather than the `ModelTier` type so
+    /// this UI-thread struct stays free of an AgentKit dependency (§Phase 4 transparency).
+    public var tierLabel: String?
+    public var tierSystemImage: String?
+
     public init(
         id: UUID = .init(),
         role: String,
         content: String,
         toolCallsMade: [String] = [],
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        tierLabel: String? = nil,
+        tierSystemImage: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -140,6 +148,8 @@ public struct ChatMessage: Identifiable, Sendable {
         self.toolCallsMade = toolCallsMade
         self.timestamp = .now
         self.isStreaming = isStreaming
+        self.tierLabel = tierLabel
+        self.tierSystemImage = tierSystemImage
     }
 }
 

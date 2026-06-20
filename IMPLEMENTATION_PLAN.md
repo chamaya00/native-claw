@@ -49,6 +49,21 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   reviews/approves curated candidates, edits facts in place, deletes, exports, and
   **"forget everything"** wipes the store and the index. CloudKit entitlements +
   `remote-notification` background mode added.
+- **Phase 4 — built (policy + harness; cloud binding seamed).** Model routing behind a
+  `ModelTier`/`TaskKind` abstraction in `AgentKit`. `ModelRouter` resolves each turn from
+  the synced `RoutingPolicy` (`MemoryKit`): the on-device-only privacy lock wins over
+  everything; otherwise the task kind picks a desired tier (chat/summarise/curate stay
+  on-device, reasoning/briefing use the configured reasoning tier), a turn that overflows
+  the 4K window escalates to PCC, and PCC is clamped by its permission flag and a metered
+  **daily budget** (rolls over per day) — falling back to on-device when disallowed or
+  exhausted. The decision is split into `policyTier` (what should run — real, tested) and
+  `boundTier` (what this build can instantiate); the engine budgets against the bound
+  tier's window and surfaces it as a per-turn **transparency chip** under the assistant
+  bubble. A new **Model-routing settings** screen exposes the privacy lock, escalation
+  permissions, reasoning-tier preference, PCC budget, and an on-demand **eval run**. The
+  `EvalHarness` target ships the `AssistantEvalSuite` (extraction, classification,
+  summarisation, reasoning) + an `EvalRunner` that grades greedy-sampled output and
+  reports pass-rate/latency per tier.
 
 **Deviations from the letter of this plan (intentional):**
 
@@ -98,6 +113,28 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
     signed TestFlight archive** requires the iCloud container enabled on the App Store
     Connect app id and the `match` provisioning profiles regenerated to include it,
     otherwise `xcodebuild archive` signing fails.
+11. **Routing policy ships live; the cloud-tier model binding is a one-function seam.**
+    The full escalation policy — privacy lock, per-task tiering, size-based escalation,
+    PCC permission + metered daily budget, third-party opt-in — is real and exercised
+    every turn. *Binding* PCC (`PrivateCloudComputeLanguageModel`) or a third-party
+    provider to a concrete model is a WWDC26 / SPM surface that can't be compile-verified
+    without a device, so `ModelRouter.bind(_:)` degrades any cloud tier to on-device and
+    flags it (`degraded` + a user-visible `reason`). The engine reports the *bound* tier,
+    so transparency never overclaims. When the binding lands it's a single function; the
+    policy, metering, budget UI, and transparency around it already ship. PCC budget is
+    consumed only when a PCC call is actually made, so the meter stays honest meanwhile.
+12. **`RoutingPolicy` is a synced singleton enforced in code, not the schema.** CloudKit
+    forbids `@Attribute(.unique)`, so "one policy per user" is realised by
+    `RoutingPolicy.load(in:)` fetching the first row and creating the default on first
+    run — the privacy posture mirrors across devices like the rest of the person's model.
+13. **`EvalHarness` is its own XcodeGen framework target, and grades deterministically.**
+    It matches §D's named target, depends on `AgentKit`+`MemoryKit`, and runs the suite
+    with greedy sampling so a regression is a real quality change, not sampling noise.
+    Apple's Evaluations framework + an LLM grader (the WWDC26 surface) is the documented
+    seam at `EvalTask.grade`; until it's device-verifiable, grading is a deterministic
+    keyword/structure check. The runner measures the on-device tier for real and records
+    cloud tiers as *pending binding*, so the report shows the on-device/PCC boundary
+    truthfully rather than fabricating a PCC number.
 
 -----
 

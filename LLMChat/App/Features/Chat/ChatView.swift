@@ -9,6 +9,7 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     @State private var showMemoryBrowser = false
     @State private var showPersonaView = false
+    @State private var showRoutingSettings = false
     @State private var showFilePicker = false
     @State private var showPhotoPicker = false
     @State private var selectedPhoto: PhotosPickerItem?
@@ -41,6 +42,7 @@ struct ChatView: View {
             .toolbar { toolbarContent }
             .navigationDestination(isPresented: $showMemoryBrowser) { MemoryBrowserView() }
             .navigationDestination(isPresented: $showPersonaView) { PersonaView(engine: engine) }
+            .navigationDestination(isPresented: $showRoutingSettings) { RoutingSettingsView(engine: engine) }
             .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: [.plainText, .pdf, .rtf],
@@ -295,6 +297,7 @@ struct ChatView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Button("Memory", systemImage: "brain") { showMemoryBrowser = true }
+                Button("Model routing", systemImage: "arrow.triangle.branch") { showRoutingSettings = true }
                 Button("Import file", systemImage: "doc.badge.plus") { showFilePicker = true }
                 Divider()
                 Button("Clear conversation", systemImage: "trash", role: .destructive) {

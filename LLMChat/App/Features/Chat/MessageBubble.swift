@@ -21,6 +21,9 @@ struct MessageBubble: View {
                 if !message.toolCallsMade.isEmpty {
                     toolCallBadges
                 }
+                if !isUser, !message.isStreaming, let tierLabel = message.tierLabel {
+                    tierBadge(label: tierLabel, systemImage: message.tierSystemImage ?? "cpu")
+                }
             }
 
             if !isUser {
@@ -90,6 +93,18 @@ struct MessageBubble: View {
         }
         .padding(.leading, isUser ? 0 : 4)
         .padding(.trailing, isUser ? 4 : 0)
+    }
+
+    /// Per-turn routing transparency (§Phase 4): a quiet chip showing which model tier
+    /// answered, so the user always knows where their data went.
+    private func tierBadge(label: String, systemImage: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage)
+            Text(label)
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+        .padding(.leading, 4)
     }
 }
 

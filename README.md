@@ -19,7 +19,7 @@ This repository executes the phased build in
 | **1** | Conversation core: streaming chat, persona, context budget, approval gate, first tools, persistence | ✅ built |
 | **2** | Tool library, multimodal capture, dynamic tool selection | ✅ built |
 | **3** | Memory loop: CloudKit sync, local RAG, "what you know about me" | ✅ built |
-| 4 | Model routing, PCC escalation, Evaluations harness | planned |
+| **4** | Model routing, PCC escalation policy, Evaluations harness | ✅ built |
 | 5–8 | Preference learning, skills/subagents, voice, premium + beta | planned |
 
 ## Architecture
@@ -31,11 +31,11 @@ loop, memory, and tools are isolated from view code and independently buildable.
 LLMChat/
 ├── project.yml                  # XcodeGen spec — defines all targets
 ├── Packages/
-│   ├── MemoryKit/               # SwiftData @Models, drafts, ToolEvent, retrieval
+│   ├── MemoryKit/               # SwiftData @Models, drafts, ToolEvent, retrieval, RoutingPolicy
 │   ├── ToolsKit/                # Tool implementations (memory tools + createReminder)
-│   └── AgentKit/                # AvailabilityService, PersonaStore, ContextBudget,
-│       │                        #   ApprovalGate, ConversationEngine
-│       └── Sources/
+│   ├── AgentKit/                # AvailabilityService, PersonaStore, ContextBudget,
+│   │                            #   ApprovalGate, ConversationEngine, ModelRouter
+│   └── EvalHarness/             # assistant eval suite + runner (Phase 4)
 ├── App/                         # app target (product "Claw")
 │   ├── LLMChatApp.swift         #   entry point + ModelContainer
 │   ├── ContentView.swift        #   availability → onboarding → chat gate
@@ -61,7 +61,9 @@ LLMChat/
 | `AvailabilityService` | AgentKit | Normalises `SystemLanguageModel.availability`; the UI gates on it. |
 | `PersonaStore` | AgentKit | Builds the compact system instructions from the saved persona. |
 | `buildTools` | ToolsKit | Assembles the tool set (search/save/update memory, persona, files, `createReminder`). |
-| SwiftData `@Model`s | MemoryKit | `Persona`, `MemoryNote`, `ImportedFile`, `Conversation`, `Message`. |
+| `ModelRouter` | AgentKit | Decides the model tier per turn (on-device → PCC → opt-in third-party) from `RoutingPolicy`, token pressure, and the PCC daily budget; surfaces which tier answered. |
+| `EvalRunner` / `AssistantEvalSuite` | EvalHarness | Runs representative assistant tasks with greedy sampling and reports pass-rate + latency per tier, so routing is decided from data. |
+| SwiftData `@Model`s | MemoryKit | `Persona`, `MemoryNote`, `ImportedFile`, `Conversation`, `Message`, `RoutingPolicy`, … |
 
 ## How it works
 
