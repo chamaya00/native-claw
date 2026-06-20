@@ -71,10 +71,12 @@ public final class ApprovalGate {
             sourceLabel: draft.sourceLabel,
             topics: draft.topics,
             importanceScore: draft.importanceScore,
-            isUserApproved: true
+            isUserApproved: true,
+            origin: "user"
         )
         context.insert(note)
         try context.save()
+        MemorySpotlightIndexer.index(note)   // make it retrievable system-wide (§Phase 3)
         pendingMemoryNote = nil
     }
 
@@ -97,6 +99,7 @@ public final class ApprovalGate {
         if let score = draft.proposedImportanceScore { note.importanceScore = score }
         note.updatedAt = .now
         try context.save()
+        MemorySpotlightIndexer.index(note)   // refresh the Spotlight entry after an edit
         pendingMemoryUpdate = nil
     }
 

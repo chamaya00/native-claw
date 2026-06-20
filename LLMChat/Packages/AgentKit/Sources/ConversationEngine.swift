@@ -46,8 +46,15 @@ public final class ConversationEngine {
 
     private let container: ModelContainer
     private let personaStore: PersonaStore
+    private let memoryManager: MemoryManager
     private let budget = ContextBudget()
     private var usedTokens = 0
+
+    /// How many assistant turns have elapsed since the last curation pass. Curation is
+    /// run periodically (not every turn) to amortise the extra model call (§Phase 3).
+    private var turnsSinceCuration = 0
+    private var didReindexSpotlight = false
+    private static let curationInterval = 4
 
     /// The tool names currently attached to the live session. Dynamic tool selection
     /// only *grows* this set when a turn needs a tool that isn't attached yet — so a
@@ -67,6 +74,10 @@ public final class ConversationEngine {
         self.availability = AvailabilityService()
         self.approvalGate = ApprovalGate(container: container)
         self.personaStore = PersonaStore(container: container)
+        self.memoryManager = MemoryManager(container: container)
+        // Make stored memory resolvable by the system (Spotlight/Siri) — App Intents
+        // queries are created by the OS and can't see the injected container otherwise.
+        MemoryEntityBridge.register(container: container)
     }
 
     // MARK: - Session lifecycle
@@ -82,6 +93,12 @@ public final class ConversationEngine {
         buildSession(condensedSummary: nil)
         if currentConversationID == nil {
             currentConversationID = createConversation()
+        }
+        // Reconcile the Spotlight index with the store once per launch — picks up facts
+        // mirrored in from another device since last run (§Phase 3 cross-device recall).
+        if !didReindexSpotlight {
+            didReindexSpotlight = true
+            MemorySpotlightIndexer.reindexAll(container: container)
         }
     }
 
@@ -190,6 +207,7 @@ public final class ConversationEngine {
         usedTokens += budget.estimatedTokens(finalText)
         lastTurnToolCalls = turnToolCalls
         persist(role: "assistant", content: finalText, toolCalls: turnToolCalls)
+        maybeCurateMemory()
 #else
         let stub = "⚠️ Foundation Models is not available in this build. Run on a device with Apple Intelligence enabled."
         continuation.yield(stub)
@@ -211,6 +229,20 @@ public final class ConversationEngine {
         return latest
     }
 #endif
+
+    /// Periodically distil durable facts from the conversation into the review inbox.
+    /// Runs off the streaming path (a separate model call) and never blocks the turn or
+    /// surfaces failures — curation is best-effort background work (§Phase 3).
+    private func maybeCurateMemory() {
+        turnsSinceCuration += 1
+        guard turnsSinceCuration >= Self.curationInterval else { return }
+        turnsSinceCuration = 0
+        let recent = fetchRecentMessages(limit: 12)
+        let manager = memoryManager
+        Task { @MainActor in
+            await manager.curate(recentMessages: recent)
+        }
+    }
 
     private func reseatWithSummary() async {
         let summary = (try? await budget.summarize(messages: fetchRecentMessages(limit: 20))) ?? ""

@@ -34,6 +34,21 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   its attached set lazily and re-seats the session when it changes. **Tool-call cards:**
   the engine records which tools ran per turn and surfaces them as chips under the
   assistant bubble. New `Info.plist` usage strings for Calendars + Contacts.
+- **Phase 3 — built.** The memory loop. `MemoryContainer` mirrors the whole schema to
+  the user's **private CloudKit database** (`cloudKitDatabase: .automatic`), with a
+  runtime fallback to a local-only store when the iCloud entitlement isn't present so
+  unsigned/CI builds never crash. The Phase-3 memory types ship now — `UserPref`,
+  `PreferencePair`, `SuggestedRoutine`, `Skill`, `StreamlineGrant` — each modelled to the
+  CloudKit rules (no `.unique`, all properties defaulted, relationships optional). A
+  `MemoryManager` curation pass distils durable facts from recent turns into the review
+  inbox as **unapproved** notes (never injected, never indexed) and flags sensitive ones;
+  the engine runs it off the streaming path every few turns. Retrieval is contributed to
+  the system via App Intents entity schemas: `MemoryFactEntity` (`IndexedEntity`) +
+  `MemoryFactQuery`, donated to the Spotlight index (`MemorySpotlightIndexer`) on approve/
+  edit/delete and reconciled once per launch. The **"what you know about me"** browser now
+  reviews/approves curated candidates, edits facts in place, deletes, exports, and
+  **"forget everything"** wipes the store and the index. CloudKit entitlements +
+  `remote-notification` background mode added.
 
 **Deviations from the letter of this plan (intentional):**
 
@@ -60,6 +75,29 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
    turn needs a tool it hasn't attached — buying back budget without per-turn churn or
    losing transcript continuity. The keyword heuristic is the seam Phase 6's Dynamic
    Profiles replace.
+7. **`MemoryNote` is the realised `MemoryFact`.** Rather than rename the model that
+   Phases 1–2 already wired through curation, approval, retrieval, and the browser, the
+   existing `MemoryNote` *is* the durable fact unit (gaining `isSensitive` + `origin`).
+   The other PRD §9 types ship alongside it. A rename is mechanical if ever wanted.
+8. **Curated candidates are persisted as unapproved notes, not held in memory.** "Queued
+   for approval" is realised as a review inbox: candidates are written with
+   `isUserApproved == false`, which the retrieval predicate and Spotlight indexer both
+   exclude — so nothing curated reaches a prompt or the system index until the user
+   approves. This keeps approval structural while giving the queue durability across
+   launches and devices.
+9. **In-turn retrieval stays on the deterministic SwiftData path; Spotlight is the
+   system surface.** The chat turn retrieves via the synchronous `searchMemories` scorer
+   (predictable, no async in the tool path), while the *same* approved facts are donated
+   as `IndexedEntity`s so Spotlight/Siri/Shortcuts can retrieve them attributably. This
+   adopts Apple's Spotlight-powered RAG without guessing at the exact private
+   FoundationModels Spotlight-tool API, which can't be verified without a device.
+10. **CloudKit is enabled with a documented provisioning prerequisite.** The
+    entitlement (`iCloud.com.charlesamaya.llmchat`) and `remote-notification` background
+    mode are committed, and the container falls back to local-only at runtime if the
+    capability is absent — so unsigned simulator/CI builds pass unchanged. The **next
+    signed TestFlight archive** requires the iCloud container enabled on the App Store
+    Connect app id and the `match` provisioning profiles regenerated to include it,
+    otherwise `xcodebuild archive` signing fails.
 
 -----
 

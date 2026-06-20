@@ -17,8 +17,8 @@ This repository executes the phased build in
 |-------|-------|-------|
 | **0** | Skeleton, availability gating, CI→TestFlight | ✅ built |
 | **1** | Conversation core: streaming chat, persona, context budget, approval gate, first tools, persistence | ✅ built |
-| 2 | Tool library, multimodal capture, dynamic tool selection | planned |
-| 3 | Memory loop: CloudKit sync, local RAG, "what you know about me" | planned |
+| **2** | Tool library, multimodal capture, dynamic tool selection | ✅ built |
+| **3** | Memory loop: CloudKit sync, local RAG, "what you know about me" | ✅ built |
 | 4 | Model routing, PCC escalation, Evaluations harness | planned |
 | 5–8 | Preference learning, skills/subagents, voice, premium + beta | planned |
 

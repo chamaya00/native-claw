@@ -3,22 +3,29 @@ import SwiftData
 import UIKit
 import MemoryKit
 
+/// "What you know about me" (§Phase 3). The user can see, edit, approve, and delete
+/// everything the assistant remembers, review facts the curation pass proposed, export
+/// the lot, and wipe it entirely. Legible, user-owned memory is the moat — and the
+/// privacy guarantee only holds if revoking it is this direct.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \MemoryNote.importanceScore, order: .reverse) private var memories: [MemoryNote]
+
+    @Query(sort: \MemoryNote.importanceScore, order: .reverse) private var allMemories: [MemoryNote]
 
     @State private var expandedID: UUID?
     @State private var searchText: String = ""
+    @State private var editing: MemoryNote?
+    @State private var showForgetConfirm = false
 
-    private var approvedMemories: [MemoryNote] {
-        memories.filter { $0.isUserApproved }
+    private var approved: [MemoryNote] { allMemories.filter { $0.isUserApproved } }
+    private var pending: [MemoryNote] {
+        allMemories.filter { !$0.isUserApproved }.sorted { $0.createdAt > $1.createdAt }
     }
 
     private var filtered: [MemoryNote] {
-        let base = approvedMemories
-        if searchText.isEmpty { return base }
+        guard !searchText.isEmpty else { return approved }
         let lower = searchText.lowercased()
-        return base.filter {
+        return approved.filter {
             $0.title.lowercased().contains(lower)
             || $0.summary.lowercased().contains(lower)
             || $0.topics.contains { $0.lowercased().contains(lower) }
@@ -27,22 +34,13 @@ struct MemoryBrowserView: View {
 
     var body: some View {
         Group {
-            if approvedMemories.isEmpty {
+            if approved.isEmpty && pending.isEmpty {
                 emptyState
             } else {
                 List {
-                    ForEach(filtered) { note in
-                        MemoryNoteRow(
-                            note: note,
-                            isExpanded: expandedID == note.id,
-                            onToggle: {
-                                withAnimation(.spring(duration: 0.3)) {
-                                    expandedID = expandedID == note.id ? nil : note.id
-                                }
-                            }
-                        )
-                    }
-                    .onDelete(perform: deleteNotes)
+                    if !pending.isEmpty { reviewSection }
+                    if !approved.isEmpty { memorySection }
+                    syncFooter
                 }
                 .listStyle(.insetGrouped)
                 .searchable(text: $searchText, prompt: "Search memories")
@@ -52,11 +50,91 @@ struct MemoryBrowserView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: exportMarkdown) {
-                    Label("Export", systemImage: "square.and.arrow.up")
+                Menu {
+                    Button(action: exportMarkdown) {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(approved.isEmpty)
+                    Divider()
+                    Button(role: .destructive) { showForgetConfirm = true } label: {
+                        Label("Forget everything", systemImage: "trash")
+                    }
+                    .disabled(allMemories.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-                .disabled(approvedMemories.isEmpty)
             }
+        }
+        .sheet(item: $editing) { note in
+            MemoryEditSheet(note: note) { title, summary, topics, importance in
+                updateNote(note, title: title, summary: summary, topics: topics,
+                           importance: importance, context: modelContext)
+            }
+        }
+        .alert("Forget everything?", isPresented: $showForgetConfirm) {
+            Button("Forget", role: .destructive) {
+                forgetAllMemory(context: modelContext)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes every fact Claw remembers, on this device and across your synced devices. This can't be undone.")
+        }
+    }
+
+    // MARK: - Review inbox (curated candidates awaiting approval)
+
+    private var reviewSection: some View {
+        Section {
+            ForEach(pending) { note in
+                ReviewRow(
+                    note: note,
+                    onApprove: { approveNote(note, context: modelContext) },
+                    onReject: { deleteNote(note, context: modelContext) }
+                )
+            }
+        } header: {
+            Label("Review (\(pending.count))", systemImage: "tray.full")
+        } footer: {
+            Text("Claw distilled these from your conversations. Approve to remember, or dismiss.")
+        }
+    }
+
+    // MARK: - Approved memories
+
+    private var memorySection: some View {
+        Section("Remembered") {
+            ForEach(filtered) { note in
+                MemoryNoteRow(
+                    note: note,
+                    isExpanded: expandedID == note.id,
+                    onToggle: {
+                        withAnimation(.spring(duration: 0.3)) {
+                            expandedID = expandedID == note.id ? nil : note.id
+                        }
+                    }
+                )
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        deleteNote(note, context: modelContext)
+                    } label: { Label("Delete", systemImage: "trash") }
+                    Button { editing = note } label: { Label("Edit", systemImage: "pencil") }
+                        .tint(.blue)
+                }
+            }
+        }
+    }
+
+    private var syncFooter: some View {
+        Section {
+            EmptyView()
+        } footer: {
+            Label(
+                MemoryContainer.isCloudSyncing
+                    ? "Synced privately across your devices via iCloud."
+                    : "Stored on this device. iCloud sync is unavailable on this build.",
+                systemImage: MemoryContainer.isCloudSyncing ? "checkmark.icloud" : "icloud.slash"
+            )
+            .font(.caption2)
         }
     }
 
@@ -70,7 +148,7 @@ struct MemoryBrowserView: View {
                 .foregroundStyle(.secondary)
             Text("No memories yet")
                 .font(.title3.weight(.semibold))
-            Text("Claw will propose memory notes during conversations. Approve them to save here.")
+            Text("As you chat, Claw proposes things worth remembering. Approve them here and they personalize every future conversation.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -79,20 +157,12 @@ struct MemoryBrowserView: View {
         }
     }
 
-    // MARK: - Actions
-
-    private func deleteNotes(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(filtered[index])
-        }
-        try? modelContext.save()
-    }
+    // MARK: - Export
 
     private func exportMarkdown() {
         var md = "# Claw Memory Export\n\nExported: \(Date.now.formatted())\n\n"
-        for note in approvedMemories {
-            md += "## \(note.title)\n\n"
-            md += "\(note.summary)\n\n"
+        for note in approved {
+            md += "## \(note.title)\n\n\(note.summary)\n\n"
             if !note.topics.isEmpty {
                 md += "**Topics:** \(note.topics.joined(separator: ", "))\n\n"
             }
@@ -109,6 +179,122 @@ struct MemoryBrowserView: View {
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.windows.first?.rootViewController {
             root.present(av, animated: true)
+        }
+    }
+}
+
+// MARK: - Review Row
+
+struct ReviewRow: View {
+    let note: MemoryNote
+    let onApprove: () -> Void
+    let onReject: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 6) {
+                if note.isSensitive {
+                    Image(systemName: "lock.shield")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Text(note.title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+            }
+            Text(note.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if note.isSensitive {
+                Text("Sensitive — review carefully before approving.")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onApprove) {
+                    Label("Approve", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button(action: onReject) {
+                    Label("Dismiss", systemImage: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.top, 2)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Edit Sheet
+
+struct MemoryEditSheet: View {
+    let note: MemoryNote
+    let onSave: (_ title: String, _ summary: String, _ topics: [String], _ importance: Float) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var summary: String
+    @State private var topicsText: String
+    @State private var importance: Double
+
+    init(note: MemoryNote,
+         onSave: @escaping (String, String, [String], Float) -> Void) {
+        self.note = note
+        self.onSave = onSave
+        _title = State(initialValue: note.title)
+        _summary = State(initialValue: note.summary)
+        _topicsText = State(initialValue: note.topics.joined(separator: ", "))
+        _importance = State(initialValue: Double(note.importanceScore))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Title") {
+                    TextField("Title", text: $title)
+                }
+                Section("Summary") {
+                    TextField("Summary", text: $summary, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+                Section("Topics") {
+                    TextField("Comma-separated topics", text: $topicsText)
+                }
+                Section("Importance") {
+                    Slider(value: $importance, in: 0...1)
+                    Text("\(Int(importance * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Edit Memory")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let topics = topicsText
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        onSave(title.trimmingCharacters(in: .whitespacesAndNewlines),
+                               summary.trimmingCharacters(in: .whitespacesAndNewlines),
+                               topics, Float(importance))
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
         }
     }
 }
