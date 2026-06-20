@@ -24,10 +24,11 @@ settings:
 # can't be verified without a Mac. Module boundaries are still enforced by the
 # build system: each Kit is its own `import`-able module.
 #
-#   MemoryKit  → SwiftData models, drafts, ToolEvent, retrieval (no deps)
-#   ToolsKit   → Tool implementations           (→ MemoryKit)
-#   AgentKit   → engine, budget, persona, gate  (→ MemoryKit, ToolsKit)
-#   LLMChat    → app target / product "Claw"    (→ AgentKit, ToolsKit, MemoryKit)
+#   MemoryKit   → SwiftData models, drafts, ToolEvent, retrieval, routing policy (no deps)
+#   ToolsKit    → Tool implementations            (→ MemoryKit)
+#   AgentKit    → engine, budget, persona, gate, model router (→ MemoryKit, ToolsKit)
+#   EvalHarness → assistant eval suite + runner   (→ AgentKit, MemoryKit)
+#   LLMChat     → app target / product "Claw"     (→ AgentKit, ToolsKit, MemoryKit, EvalHarness)
 # ---------------------------------------------------------------------------
 
 targets:
@@ -72,6 +73,21 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
 
+  EvalHarness:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/EvalHarness/Sources
+    dependencies:
+      - target: AgentKit
+      - target: MemoryKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.EvalHarness
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
   LLMChat:
     type: application
     platform: iOS
@@ -83,6 +99,7 @@ targets:
       - target: AgentKit
       - target: ToolsKit
       - target: MemoryKit
+      - target: EvalHarness
     settings:
       base:
         PRODUCT_NAME: Claw
