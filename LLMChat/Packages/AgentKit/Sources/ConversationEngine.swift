@@ -36,6 +36,10 @@ public final class ConversationEngine {
     public var toolIndicator: String?
     public private(set) var currentConversationID: UUID?
 
+    /// Tools that actually ran during the most recent turn (cleaned labels), surfaced
+    /// to the UI as tool-call chips under the assistant bubble (§Phase 2).
+    public private(set) var lastTurnToolCalls: [String] = []
+
     public var isAvailable: Bool { availability.isAvailable }
 
     // MARK: Dependencies
@@ -44,6 +48,14 @@ public final class ConversationEngine {
     private let personaStore: PersonaStore
     private let budget = ContextBudget()
     private var usedTokens = 0
+
+    /// The tool names currently attached to the live session. Dynamic tool selection
+    /// only *grows* this set when a turn needs a tool that isn't attached yet — so a
+    /// short conversation never pays the token cost of tools it never uses (§Phase 2).
+    /// Seeded with `ToolSelector.coreToolNames` in `start()` (gated on FoundationModels).
+    private var attachedToolNames: Set<String> = []
+    /// Cleaned tool labels collected during the in-flight turn.
+    private var turnToolCalls: [String] = []
 
 #if canImport(FoundationModels)
     private var session: LanguageModelSession?
@@ -64,6 +76,9 @@ public final class ConversationEngine {
         guard availability.isAvailable else {
             throw AgentError.modelUnavailable(availability.state)
         }
+#if canImport(FoundationModels)
+        attachedToolNames = ToolSelector.coreToolNames
+#endif
         buildSession(condensedSummary: nil)
         if currentConversationID == nil {
             currentConversationID = createConversation()
@@ -104,7 +119,11 @@ public final class ConversationEngine {
             condensedSummary: condensedSummary
         )
         session = LanguageModelSession(
-            tools: buildTools(container: container, onEvent: makeEventHandler()),
+            tools: buildTools(
+                container: container,
+                onEvent: makeEventHandler(),
+                selecting: attachedToolNames
+            ),
             instructions: instructions
         )
         usedTokens = budget.estimatedTokens(instructions)
@@ -118,11 +137,11 @@ public final class ConversationEngine {
     /// the response so far (idiomatic FoundationModels partial-snapshot streaming) —
     /// bind it straight to SwiftUI state. The user turn is persisted immediately and
     /// the final assistant turn on completion.
-    public func streamResponse(to text: String) -> AsyncThrowingStream<String, Error> {
+    public func streamResponse(to text: String, hasImage: Bool = false) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { @MainActor in
                 do {
-                    try await self.runTurn(text: text, continuation: continuation)
+                    try await self.runTurn(text: text, hasImage: hasImage, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -134,17 +153,29 @@ public final class ConversationEngine {
 
     private func runTurn(
         text: String,
+        hasImage: Bool,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
         persist(role: "user", content: text)
         usedTokens += budget.estimatedTokens(text)
+        turnToolCalls = []
+        lastTurnToolCalls = []
 
-        // Proactively summarise before we risk overflowing the window.
-        if budget.shouldSummarize(usedTokens: usedTokens) {
+#if canImport(FoundationModels)
+        // Dynamic tool selection (§Phase 2): grow the attached tool set only when this
+        // turn plausibly needs a tool we haven't attached yet, then re-seat the session.
+        let needed = attachedToolNames.union(
+            ToolSelector.selectedToolNames(for: text, hasImage: hasImage)
+        )
+        let toolsChanged = needed != attachedToolNames
+
+        // Proactively summarise before we risk overflowing the window. Re-seating also
+        // rebuilds the session, so fold a needed tool-set change into the same rebuild.
+        if budget.shouldSummarize(usedTokens: usedTokens) || toolsChanged {
+            attachedToolNames = needed
             await reseatWithSummary()
         }
 
-#if canImport(FoundationModels)
         guard let session else { throw AgentError.sessionNotInitialized }
         var finalText = ""
         do {
@@ -157,7 +188,8 @@ public final class ConversationEngine {
             finalText = try await stream(session: retry, text: text, continuation: continuation)
         }
         usedTokens += budget.estimatedTokens(finalText)
-        persist(role: "assistant", content: finalText)
+        lastTurnToolCalls = turnToolCalls
+        persist(role: "assistant", content: finalText, toolCalls: turnToolCalls)
 #else
         let stub = "⚠️ Foundation Models is not available in this build. Run on a device with Apple Intelligence enabled."
         continuation.yield(stub)
@@ -248,12 +280,21 @@ public final class ConversationEngine {
             switch event {
             case .toolStarted(let label):
                 self?.toolIndicator = label
+                self?.recordToolCall(label)
             case .toolCompleted:
                 self?.toolIndicator = nil
             default:
                 gate.submit(event)
             }
         }
+    }
+
+    /// Turn a progress label ("Searching memory…") into a compact chip ("Searching memory")
+    /// and dedupe it for the turn's tool-call record.
+    private func recordToolCall(_ label: String) {
+        let cleaned = label.trimmingCharacters(in: CharacterSet(charactersIn: "… ."))
+        guard !cleaned.isEmpty, !turnToolCalls.contains(cleaned) else { return }
+        turnToolCalls.append(cleaned)
     }
 
     // MARK: - Persistence
@@ -266,12 +307,12 @@ public final class ConversationEngine {
         return conversation.id
     }
 
-    private func persist(role: String, content: String) {
+    private func persist(role: String, content: String, toolCalls: [String] = []) {
         guard let id = currentConversationID else { return }
         let context = ModelContext(container)
         let descriptor = FetchDescriptor<Conversation>(predicate: #Predicate { $0.id == id })
         guard let conversation = (try? context.fetch(descriptor))?.first else { return }
-        let message = Message(role: role, content: content)
+        let message = Message(role: role, content: content, toolCallsMade: toolCalls)
         message.conversation = conversation
         conversation.messages.append(message)
         try? context.save()

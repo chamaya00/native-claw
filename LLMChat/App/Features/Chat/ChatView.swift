@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 import UniformTypeIdentifiers
 import AgentKit
 
@@ -9,6 +10,8 @@ struct ChatView: View {
     @State private var showMemoryBrowser = false
     @State private var showPersonaView = false
     @State private var showFilePicker = false
+    @State private var showPhotoPicker = false
+    @State private var selectedPhoto: PhotosPickerItem?
 
     private let engine: ConversationEngine
 
@@ -45,11 +48,33 @@ struct ChatView: View {
             ) { result in
                 handleFileImport(result)
             }
+            .photosPicker(
+                isPresented: $showPhotoPicker,
+                selection: $selectedPhoto,
+                matching: .images
+            )
         }
         .task { await viewModel.startSession() }
         .onDisappear { viewModel.endSession() }
         .onChange(of: isInputFocused) { _, focused in
             if focused { engine.prewarm() }
+        }
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task { await handlePhotoSelection(item) }
+        }
+    }
+
+    private func handlePhotoSelection(_ item: PhotosPickerItem) async {
+        defer { selectedPhoto = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                viewModel.error = "Couldn't load that image."
+                return
+            }
+            await viewModel.attachImage(data: data, name: "Image")
+        } catch {
+            viewModel.error = "Couldn't load that image: \(error.localizedDescription)"
         }
     }
 
@@ -79,6 +104,7 @@ struct ChatView: View {
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingMemoryNote?.id)
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingPersonaUpdate?.id)
                 .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingReminder?.id)
+                .animation(.spring(duration: 0.3), value: viewModel.approvalGate.pendingCalendarEvent?.id)
             }
             .onChange(of: viewModel.messages.count) {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -130,19 +156,62 @@ struct ChatView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .id("pendingReminder")
         }
+
+        if let draft = viewModel.approvalGate.pendingCalendarEvent {
+            CalendarEventConfirmationCard(
+                draft: draft,
+                onConfirm: { viewModel.confirmCalendarEvent() },
+                onDiscard: { viewModel.discardCalendarEvent() }
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .id("pendingCalendarEvent")
+        }
     }
 
     // MARK: - Input Bar
 
     private var inputBar: some View {
+        VStack(spacing: 0) {
+            if viewModel.hasPendingImage || viewModel.isProcessingImage {
+                pendingImageChip
+            }
+            inputControls
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private var pendingImageChip: some View {
+        HStack(spacing: 6) {
+            if viewModel.isProcessingImage {
+                ProgressView().scaleEffect(0.7)
+                Text("Reading image…").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "photo").font(.caption).foregroundStyle(.secondary)
+                Text(viewModel.pendingImageName ?? "Image attached")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Button(action: { viewModel.clearPendingImage() }) {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                }
+                .accessibilityLabel("Remove image")
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+
+    private var inputControls: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            Button(action: { showFilePicker = true }) {
+            Menu {
+                Button("Photo or screenshot", systemImage: "photo") { showPhotoPicker = true }
+                Button("File", systemImage: "doc") { showFilePicker = true }
+            } label: {
                 Image(systemName: "paperclip")
                     .font(.system(size: 20))
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
             }
-            .accessibilityLabel("Import file")
+            .accessibilityLabel("Attach")
 
             TextField("Message…", text: $viewModel.inputText, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -176,8 +245,10 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasText = !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return (hasText || viewModel.hasPendingImage)
             && !viewModel.isResponding
+            && !viewModel.isProcessingImage
     }
 
     // MARK: - Tool Indicator

@@ -88,6 +88,35 @@ public struct ReminderDraft: Sendable, Identifiable {
     }
 }
 
+/// A proposed calendar event (Phase 2). Written to EventKit only after approval —
+/// the same gate the reminder tool uses, now for the richer "propose an event from
+/// a screenshot" flow. Start/end are natural language parsed with `NSDataDetector`
+/// at confirmation time so the model never has to format dates.
+public struct CalendarEventDraft: Sendable, Identifiable {
+    public let id = UUID()
+    public var title: String
+    public var location: String?
+    public var notes: String?
+    /// Natural-language start ("tomorrow 2pm", "next Friday 9am").
+    public var startText: String
+    /// Natural-language end, or empty to default to one hour after start.
+    public var endText: String?
+
+    public init(
+        title: String,
+        location: String?,
+        notes: String?,
+        startText: String,
+        endText: String?
+    ) {
+        self.title = title
+        self.location = location
+        self.notes = notes
+        self.startText = startText
+        self.endText = endText
+    }
+}
+
 // MARK: - In-memory Chat Message (for the UI thread)
 
 public struct ChatMessage: Identifiable, Sendable {
@@ -123,4 +152,5 @@ public enum ToolEvent: Sendable {
     case pendingMemoryUpdate(MemoryUpdateDraft)
     case pendingPersonaUpdate(PersonaUpdateDraft)
     case pendingReminder(ReminderDraft)
+    case pendingCalendarEvent(CalendarEventDraft)
 }

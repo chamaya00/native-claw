@@ -24,6 +24,10 @@
 	<string>AppIcon</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Claw creates reminders you approve in chat. Access is requested only when you confirm a reminder, and nothing is added without your approval.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Claw reads your schedule to answer questions like "what's on tomorrow?" and adds events you approve in chat. Nothing is changed without your confirmation.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Claw looks up people in your Contacts when you ask for someone's number or email. Contact details stay on your device.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

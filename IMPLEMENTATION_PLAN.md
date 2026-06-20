@@ -22,6 +22,18 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   approval-gated). The pre-existing Claw memory tools, onboarding, and chat/memory UI
   were carried over into the new modules; `AgentService`, dead `Haptics`/animation
   helpers, and the unused `ImagePlayground` dependency were deprecated and removed.
+- **Phase 2 — built.** Tool library expanded in `ToolsKit`: read-only `readCalendar`
+  (EventKit), `lookupContact` (Contacts), `fetchWebPage` (URLSession + HTML→text
+  pre-digest), `lookupPlace` (MapKit `MKLocalSearch`); and the approval-gated
+  `createCalendarEvent` (EventKit write through `ApprovalGate`, new `CalendarEventDraft`
+  + confirmation card). **Multimodal capture:** `MemoryKit.ImageProcessor` runs
+  Vision OCR + barcode detection on-device, folding a *compact text digest* (not raw
+  pixels) into the next turn to protect the 4K budget; images attach via `PhotosPicker`,
+  and PDFs now extract text via PDFKit. **Dynamic tool selection:** `ToolSelector` picks
+  only the tools plausibly relevant to a turn (memory tools always-on); the engine grows
+  its attached set lazily and re-seats the session when it changes. **Tool-call cards:**
+  the engine records which tools ran per turn and surfaces them as chips under the
+  assistant bubble. New `Info.plist` usage strings for Calendars + Contacts.
 
 **Deviations from the letter of this plan (intentional):**
 
@@ -37,6 +49,17 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
    the Evaluations harness in Phase 4.
 4. **`ModelRouter` is deferred to Phase 4** (where it earns its keep) rather than
    shipped as a Phase-1 stub.
+5. **Phase 2 image input is OCR-to-text, not raw image input.** The plan's primary
+   guidance is to pre-digest images (OCR/barcode) to conserve the 4K window; we do
+   exactly that via Vision in `ImageProcessor`. Raw image input for genuine visual
+   reasoning is left as a documented seam rather than shipped now, since that WWDC26
+   API surface can't be verified without a device.
+6. **Dynamic tool selection grows the attached set lazily** instead of recomputing a
+   fresh per-turn tool list. CLAUDE.md mandates attaching tools at session init, so the
+   engine starts with the always-on memory tools and only re-seats the session when a
+   turn needs a tool it hasn't attached — buying back budget without per-turn churn or
+   losing transcript continuity. The keyword heuristic is the seam Phase 6's Dynamic
+   Profiles replace.
 
 -----
 
