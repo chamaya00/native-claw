@@ -24,7 +24,8 @@ public struct PersonaStore {
         persona: Persona?,
         topMemories: [MemoryNote],
         stylePrefs: [UserPref] = [],
-        condensedSummary: String? = nil
+        condensedSummary: String? = nil,
+        profileDelta: String? = nil
     ) -> String {
         var prompt = """
         You are Claw, a private on-device AI agent. Your persona and purpose are defined in your memory and loaded at the start of each session.
@@ -70,6 +71,12 @@ public struct PersonaStore {
 
         if let condensedSummary, !condensedSummary.isEmpty {
             prompt += "\n\nSummary of the conversation so far:\n\(condensedSummary)"
+        }
+
+        // Active conversation mode (Dynamic Profiles, §Phase 6). Layered last so a mode's
+        // focus instructions take precedence over the general rules above.
+        if let profileDelta, !profileDelta.isEmpty {
+            prompt += "\n\nActive mode:\n\(profileDelta)"
         }
 
         return prompt

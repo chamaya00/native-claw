@@ -3,6 +3,7 @@ import SwiftData
 import PDFKit
 import MemoryKit
 import AgentKit
+import SkillsKit
 
 @Observable
 @MainActor
@@ -22,6 +23,15 @@ final class ChatViewModel {
     var isProcessingImage: Bool = false
 
     var hasPendingImage: Bool { pendingImageDigest != nil }
+
+    /// Whether the focused research subagent is active (§Phase 6 Dynamic Profiles). When on,
+    /// turns run in an isolated context and are not saved to the main conversation.
+    var isResearchMode: Bool = false
+
+    /// Turns since the last skill-suggestion pass. Skills are proposed periodically off the
+    /// streaming path (mirrors routine suggestion), at a slightly longer cadence.
+    private var turnsSinceSkillSuggestion = 0
+    private static let skillSuggestionInterval = 8
 
     // MARK: - Dependencies
 
@@ -106,6 +116,32 @@ final class ChatViewModel {
         }
 
         isResponding = false
+        maybeSuggestSkills()
+    }
+
+    // MARK: - Research mode (Phase 6 Dynamic Profiles)
+
+    /// Toggle the focused research subagent. Switching profiles re-seats the relevant session;
+    /// research turns run isolated so the main chat stays clean.
+    func toggleResearchMode() {
+        isResearchMode.toggle()
+        let target: ConversationProfile = isResearchMode ? .research : .assistant
+        Task { await engine.activateProfile(target) }
+    }
+
+    // MARK: - Skill suggestion (Phase 6)
+
+    /// Periodically propose reusable skills from recurring patterns (§Phase 6). Off the
+    /// streaming path, self-limiting, best-effort — candidates land in the in-app skills
+    /// inbox as `suggested`, never auto-approved and never run. Skipped during research mode.
+    private func maybeSuggestSkills() {
+        guard !isResearchMode else { return }
+        turnsSinceSkillSuggestion += 1
+        guard turnsSinceSkillSuggestion >= Self.skillSuggestionInterval else { return }
+        turnsSinceSkillSuggestion = 0
+        let recent = messages
+        let container = self.container
+        Task { await SkillSuggester(container: container).suggest(recentMessages: recent) }
     }
 
     // MARK: - Image Attachment (Phase 2 multimodal)
@@ -191,6 +227,7 @@ final class ChatViewModel {
 
     func clearConversation() {
         messages = []
+        isResearchMode = false
         Task { await engine.clearConversation() }
     }
 

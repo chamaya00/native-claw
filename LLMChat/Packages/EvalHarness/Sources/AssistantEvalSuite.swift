@@ -48,6 +48,24 @@ public enum AssistantEvalSuite {
             prompt: "I have 3 meetings of 45 minutes each and a 30 minute lunch between 9am and 1pm. How many free minutes are left in that window?",
             mustContain: ["45"],
             rationale: "Reasoning: a multi-step arithmetic task — the kind that motivates PCC escalation when the on-device model is unreliable on it."
+        ),
+        EvalTask(
+            id: "skill.plan.synthesis",
+            kind: .briefing,
+            instructions: """
+            You turn a set of notes — calendar, priorities, a brief — into a short, prioritised \
+            plan for the day. Three to five plain-text bullet points, most important first. Be \
+            concrete and specific to the notes; never pad with generic advice.
+            """,
+            prompt: """
+            Check today's calendar:
+            • 10:00 AM: Dentist
+            • 2:00 PM: Project review with Sam
+            Review what I care about:
+            • Q3 launch: ship the beta this week
+            """,
+            mustContain: ["dentist", "sam"],
+            rationale: "Synthesis: the Phase-6 skill runner's planDay step must fold calendar + priorities into a concrete plan without dropping the day's actual items."
         )
     ]
 }

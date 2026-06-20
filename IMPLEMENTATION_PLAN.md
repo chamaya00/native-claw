@@ -84,6 +84,27 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   notify. New Info.plist `UIBackgroundModes` (`fetch`, `processing`) +
   `BGTaskSchedulerPermittedIdentifiers`.
 
+- **Phase 6 — built.** Skills & subagents. A new `SkillsKit` framework target models a
+  `Skill` as a **declarative composition of named actions** (`SkillCatalog`: a closed,
+  auditable vocabulary of read-only/already-approved capabilities — never generated code,
+  App Review §2.5.2). `SkillStore` (in `MemoryKit`) drives the same propose→approve→dismiss
+  lifecycle as the Phase-5 inbox (dismissals kept as a durable negative signal), tracks
+  `runCount`/`successCount` → `successRate`, and gates **self-improvement**: an
+  assistant-proposed `proposedRevision` is applied only if the user accepts it.
+  `SkillSuggester` runs an on-device pass (off the streaming path, behind a turn cadence)
+  proposing reusable skills from recurring patterns as **suggested**; `SkillRunner`
+  executes an approved skill's recipe on-device (calendar/memory reads + an on-device plan
+  synthesis), routed through `ModelRouter` for the full Phase-4 policy. Skills are exposed
+  to the system via App Intents — `SkillEntity` (`AppEntity`/`IndexedEntity`) + `SkillQuery`,
+  a `RunSkillIntent`, and a `ClawShortcuts: AppShortcutsProvider` — and donated to Spotlight
+  (`SkillSpotlightIndexer`), so an approved skill is invocable from Siri/Spotlight/Shortcuts.
+  **Dynamic Profiles** land in `AgentKit` as `ConversationProfile`: the `.research` mode is
+  an isolated subagent — its own session seeded with a baton-passed summary of the main
+  chat, a restricted tool set (memory + web fetch), and turns that are never persisted to or
+  folded into the main conversation, so focused work never pollutes the main context. A new
+  `Features/Skills` surfaces the inbox/library (approve / edit / run / accept-revision /
+  dismiss), and the chat adds a research-mode toggle + banner.
+
 **Deviations from the letter of this plan (intentional):**
 
 1. **Modules are XcodeGen framework targets, not separate `Package.swift` packages.**
@@ -175,6 +196,33 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
     transparency) — but since the cloud-tier binding is still the documented seam (deviation
     11), the bound tier is on-device. The 4K window is enough for a calendar+memory digest;
     when PCC binding lands, larger syntheses escalate with no call-site change.
+18. **Dynamic Profiles live in `AgentKit`, not `SkillsKit` as §D sketches.** A profile is
+    fundamentally session-bound — it swaps the *instructions + tools + context strategy* the
+    `ConversationEngine` seeds a session with — so `ConversationProfile` lives beside the
+    engine. `SkillsKit` owns the other half of Phase 6 (declarative skills + App Intents).
+    The WWDC26 `DynamicProfile`/`Profile` protocol (with built-in transcript trim + KV
+    caching) is the documented seam: the same behaviour is realised today via the engine's
+    existing re-seat + `ContextBudget` machinery, and adopting the real API is localised
+    behind `ConversationProfile`.
+19. **A skill recipe is a closed action vocabulary, not arbitrary App-Intent identifiers.**
+    The plan calls a skill "a composition of `AppIntent`s." To keep execution App-Review-safe
+    and on-device-runnable today, `Skill.intentRecipe` references the `SkillCatalog` enum — a
+    fixed set of read-only/already-approved capabilities (calendar/memory reads, brief, plan
+    synthesis). This is declarative, auditable, and can never slip an unapproved mutation past
+    the `ApprovalGate`; widening the vocabulary is a matter of adding a case + a `SkillRunner`
+    arm. Unknown identifiers in a recipe degrade gracefully (dropped), so a newer build's
+    recipe still runs.
+20. **App Intents adopt the stable surface; assistant-schema macros are the seam.** Skills are
+    exposed via `AppEntity`/`AppIntent`/`IndexedEntity` + an `AppShortcutsProvider` (the proven
+    Phase-3 pattern), donated to Spotlight, and reachable from Siri/Shortcuts. The WWDC26 App
+    Intents *assistant schemas* (`@AssistantIntent`/`@AssistantEntity`) can't be compile-verified
+    without the device SDK, so schema-macro adoption is left as a one-annotation change — the
+    discoverability and execution already ship.
+21. **`SkillSuggester` is driven from the app layer, not the engine.** `SkillsKit` depends on
+    `AgentKit` (for `ModelRouter`/`BriefingService`), so the engine can't call into it without a
+    cycle. Like Phase-5 routine suggestion it runs periodically off the streaming path, but it's
+    kicked from `ChatViewModel` after a turn completes — keeping `AgentKit` free of any skill
+    dependency while preserving the same propose-then-approve cadence.
 
 -----
 

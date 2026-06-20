@@ -48,6 +48,11 @@ public final class ConversationEngine {
     /// to the UI as tool-call chips under the assistant bubble (§Phase 2).
     public private(set) var lastTurnToolCalls: [String] = []
 
+    /// The active conversation mode (Dynamic Profiles, §Phase 6). The default `.assistant`
+    /// runs on the main session and durable transcript; an isolated profile like `.research`
+    /// runs as a subagent that never touches the main conversation.
+    public private(set) var activeProfile: ConversationProfile = .assistant
+
     public var isAvailable: Bool { availability.isAvailable }
 
     // MARK: Dependencies
@@ -77,9 +82,17 @@ public final class ConversationEngine {
     /// Cleaned tool labels collected during the in-flight turn.
     private var turnToolCalls: [String] = []
 
+    /// Token usage + the handed-off context for the isolated research subagent. Tracked
+    /// separately so a research thread never spends the main conversation's budget (§Phase 6).
+    private var researchUsedTokens = 0
+    private var researchBaton: String?
+
 #if canImport(FoundationModels)
     private var session: LanguageModelSession?
     private var onboardingSession: LanguageModelSession?
+    /// The isolated subagent session for a context-isolating profile (e.g. `.research`).
+    /// Built on demand by `activateProfile` and torn down on return to `.assistant`.
+    private var researchSession: LanguageModelSession?
 #endif
 
     public init(container: ModelContainer) {
@@ -122,7 +135,11 @@ public final class ConversationEngine {
 #if canImport(FoundationModels)
         session = nil
         onboardingSession = nil
+        researchSession = nil
 #endif
+        activeProfile = .assistant
+        researchBaton = nil
+        researchUsedTokens = 0
         approvalGate.clearAll()
         toolIndicator = nil
     }
@@ -191,6 +208,15 @@ public final class ConversationEngine {
         hasImage: Bool,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
+        // An isolated profile (e.g. research) runs as a subagent: its turns are never
+        // persisted to the main conversation, never fold into the main session's transcript,
+        // and skip curation/suggestion/preference side-effects — the main chat stays pristine
+        // while the mode is active (§Phase 6).
+        if activeProfile.isolatesContext {
+            try await runIsolatedTurn(text: text, continuation: continuation)
+            return
+        }
+
         persist(role: "user", content: text)
         usedTokens += budget.estimatedTokens(text)
         turnToolCalls = []
@@ -305,6 +331,96 @@ public final class ConversationEngine {
     /// picks measurably shift response style).
     public func applyLearnedPreferences() async {
         await reseatWithSummary()
+    }
+
+    // MARK: - Dynamic Profiles (§Phase 6)
+
+    /// Switch conversation modes. The default `.assistant` runs on the main session; an
+    /// isolating profile like `.research` spins up a subagent session seeded with a *baton* —
+    /// a condensed summary of the main chat — so the mode has the context it needs without
+    /// dragging (or polluting) the full transcript. Returning to `.assistant` tears the
+    /// subagent down, leaving the main conversation exactly as it was.
+    public func activateProfile(_ profile: ConversationProfile) async {
+        guard profile.id != activeProfile.id else { return }
+        activeProfile = profile
+
+        if profile.isolatesContext {
+            // Baton-pass: hand the subagent a compact summary of the main conversation.
+            let baton = (try? await budget.summarize(messages: fetchRecentMessages(limit: 12))) ?? ""
+            researchBaton = baton.isEmpty ? nil : baton
+            researchUsedTokens = 0
+            buildResearchSession(baton: researchBaton)
+        } else {
+#if canImport(FoundationModels)
+            researchSession = nil
+#endif
+            researchBaton = nil
+            researchUsedTokens = 0
+        }
+    }
+
+    private func buildResearchSession(baton: String?) {
+#if canImport(FoundationModels)
+        let context = ModelContext(container)
+        let persona = personaStore.currentPersona()
+        // A lean memory seed — research leans on the web-fetch tool and explicit recall, so
+        // we keep the always-injected memory small to leave room for a deeper exchange.
+        let recent = searchMemories(query: "recent context active goals", context: context, limit: 2)
+        let instructions = personaStore.systemInstructions(
+            persona: persona,
+            topMemories: recent,
+            stylePrefs: approvedStylePrefs(context: context),
+            condensedSummary: baton,
+            profileDelta: activeProfile.instructionDelta
+        )
+        let toolNames = activeProfile.restrictsToolsTo ?? ToolSelector.coreToolNames
+        researchSession = LanguageModelSession(
+            tools: buildTools(container: container, onEvent: makeEventHandler(), selecting: toolNames),
+            instructions: instructions
+        )
+        researchUsedTokens = budget.estimatedTokens(instructions)
+        researchSession?.prewarm()
+#endif
+    }
+
+    /// Run one turn in the isolated subagent. Mirrors the main streaming path (routing,
+    /// budget, typed overflow recovery) but persists nothing to the main conversation and
+    /// fires none of the background passes — the isolation that keeps the main chat clean.
+    private func runIsolatedTurn(
+        text: String,
+        continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) async throws {
+        researchUsedTokens += budget.estimatedTokens(text)
+        turnToolCalls = []
+        lastTurnToolCalls = []
+
+        let resolution = router.resolve(task: .reasoning, estimatedPromptTokens: researchUsedTokens)
+        lastResponseTier = resolution.boundTier
+
+#if canImport(FoundationModels)
+        let activeBudget = ContextBudget(contextSize: resolution.contextSize)
+        if researchSession == nil || activeBudget.shouldSummarize(usedTokens: researchUsedTokens) {
+            // Rebuild the subagent from the same baton, dropping its accumulated transcript.
+            researchUsedTokens = 0
+            buildResearchSession(baton: researchBaton)
+        }
+
+        guard let researchSession else { throw AgentError.sessionNotInitialized }
+        var finalText = ""
+        do {
+            finalText = try await stream(session: researchSession, text: text, continuation: continuation)
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+            researchUsedTokens = 0
+            buildResearchSession(baton: researchBaton)
+            guard let retry = self.researchSession else { throw AgentError.sessionNotInitialized }
+            finalText = try await stream(session: retry, text: text, continuation: continuation)
+        }
+        researchUsedTokens += budget.estimatedTokens(finalText)
+        lastTurnToolCalls = turnToolCalls
+#else
+        let stub = "⚠️ Foundation Models is not available in this build. Run on a device with Apple Intelligence enabled."
+        continuation.yield(stub)
+#endif
     }
 
     // MARK: - Onboarding

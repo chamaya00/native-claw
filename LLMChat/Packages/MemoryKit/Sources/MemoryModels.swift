@@ -106,16 +106,32 @@ public final class SuggestedRoutine {
 
 /// A reusable, named routine assembled from repeated actions (Phase 6). Persisted as a
 /// *declarative* recipe of App Intent identifiers — never generated code (App Review §2.5.2).
+///
+/// The lifecycle mirrors the Phase-5 `SuggestedRoutine` inbox: a skill is proposed
+/// (`status == "suggested"`), the user approves/edits/dismisses it, and only an
+/// **approved** skill runs or is exposed to Siri/Shortcuts. `isUserApproved` is kept in
+/// lockstep with `status == "approved"` so existing approval predicates keep working.
 @Model
 public final class Skill {
     public var id: UUID = UUID()
     public var name: String = ""
     public var summary: String = ""
-    /// Ordered App Intent identifiers composing the routine. Declarative only.
+    /// One sentence on why the assistant proposed this skill, grounded in the user's pattern.
+    public var rationale: String = ""
+    /// Ordered declarative action identifiers composing the routine (from `SkillCatalog`).
+    /// Declarative only — never code (App Review §2.5.2).
     public var intentRecipe: [String] = []
+    /// "suggested" | "approved" | "dismissed". Plain string for CloudKit safety; the typed
+    /// `SkillStatus` view lives in `SkillStore`. Dismissed rows are kept as a durable
+    /// negative signal so the suggester never re-proposes them.
+    public var status: String = "suggested"
+    /// A pending self-improvement the assistant proposed (a revised summary/recipe), held
+    /// here until the user approves it — revisions are approval-gated, never auto-applied.
+    public var proposedRevision: String?
     public var runCount: Int = 0
     public var successCount: Int = 0
     public var isUserApproved: Bool = false
+    public var lastRunAt: Date?
     public var createdAt: Date = Date.now
     public var updatedAt: Date = Date.now
 
@@ -123,20 +139,34 @@ public final class Skill {
         id: UUID = .init(),
         name: String = "",
         summary: String = "",
+        rationale: String = "",
         intentRecipe: [String] = [],
+        status: String = "suggested",
+        proposedRevision: String? = nil,
         runCount: Int = 0,
         successCount: Int = 0,
-        isUserApproved: Bool = false
+        isUserApproved: Bool = false,
+        lastRunAt: Date? = nil
     ) {
         self.id = id
         self.name = name
         self.summary = summary
+        self.rationale = rationale
         self.intentRecipe = intentRecipe
+        self.status = status
+        self.proposedRevision = proposedRevision
         self.runCount = runCount
         self.successCount = successCount
         self.isUserApproved = isUserApproved
+        self.lastRunAt = lastRunAt
         self.createdAt = .now
         self.updatedAt = .now
+    }
+
+    /// Share of runs that succeeded, in `0...1`. Zero when never run.
+    public var successRate: Double {
+        guard runCount > 0 else { return 0 }
+        return Double(successCount) / Double(runCount)
     }
 }
 
