@@ -151,7 +151,7 @@ struct RoutingSettingsView: View {
     private func evalResultRow(_ result: EvalResult) -> some View {
         HStack(spacing: 8) {
             Image(systemName: result.note != nil ? "minus.circle" : (result.passed ? "checkmark.circle.fill" : "xmark.circle.fill"))
-                .foregroundStyle(result.note != nil ? .secondary : (result.passed ? .green : .red))
+                .foregroundStyle(result.note != nil ? Color.secondary : (result.passed ? Color.green : Color.red))
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.taskID).font(.caption.monospaced())
                 Text(result.tier.shortLabel).font(.caption2).foregroundStyle(.secondary)
