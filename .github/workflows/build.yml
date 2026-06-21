@@ -66,27 +66,20 @@ jobs:
         working-directory: LLMChat
         run: bundle install
 
-      - name: Generate Xcode project
-        working-directory: LLMChat
-        run: xcodegen generate --spec project.yml
-
       # Build for iOS Simulator (no signing required). With Xcode 26 selected
       # above, canImport(FoundationModels) is true so the real API surface is
       # compiled. Any type errors or API mismatches in LLMService.swift will
       # surface here rather than silently falling through to the STUB path.
+      #
+      # Runs via the fastlane `build` lane (which regenerates the project and
+      # invokes gym). gym pipes xcodebuild through `set -o pipefail`, so a
+      # compile failure propagates as a non-zero exit instead of being masked
+      # by the output formatter — the trap that previously let a broken build
+      # report green on a PR. Using the lane also keeps CI and the deploy on
+      # the same build path so they cannot drift.
       - name: Build for iOS Simulator (Debug)
         working-directory: LLMChat
-        run: |
-          xcodebuild build \
-            -project LLMChat.xcodeproj \
-            -scheme LLMChat \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            | bundle exec xcpretty
+        run: bundle exec fastlane build
 
       # Archive for a generic iOS *device* in the Release configuration, with
       # signing disabled. This is a cheap proxy for the TestFlight deploy: it
@@ -95,19 +88,13 @@ jobs:
       # build failures are caught here on the PR instead of surfacing later in
       # the deploy. The Debug/simulator build above does NOT catch these
       # because Release optimisations and the device SDK differ.
+      #
+      # Uses the fastlane `archive_check` lane, which mirrors `beta`'s gym
+      # configuration (Release, generic iOS device) minus signing/upload — and,
+      # like every gym invocation, propagates build failures via pipefail.
       - name: Archive for device (Release, unsigned)
         working-directory: LLMChat
-        run: |
-          xcodebuild archive \
-            -project LLMChat.xcodeproj \
-            -scheme LLMChat \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/LLMChat.xcarchive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            | bundle exec xcpretty
+        run: bundle exec fastlane archive_check
 
       - name: Upload build logs on failure
         if: failure()
