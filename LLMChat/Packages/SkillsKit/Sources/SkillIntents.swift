@@ -103,12 +103,21 @@ public struct RunSkillIntent: AppIntent {
     }
 }
 
-/// Exposes Claw's skills to Siri, Spotlight, and the Shortcuts app. Apps without an
-/// `AppShortcutsProvider` are invisible to the new Siri (§Phase 7 note), so we register one
-/// here; Phase 7 adds the voice/system-invocation surface on top of the same intents.
+/// Exposes Claw's skills *and* the assistant itself to Siri, Spotlight, and the Shortcuts app.
+/// Apps without an `AppShortcutsProvider` are invisible to the new Siri, so we register one here;
+/// Phase 7 adds the "Ask Claw" voice/system-invocation surface on top of the same intent layer.
 @available(iOS 18.0, *)
 public struct ClawShortcuts: AppShortcutsProvider {
     public static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: AskClawIntent(),
+            phrases: [
+                "Ask \(.applicationName)",
+                "Ask \(.applicationName) a question"
+            ],
+            shortTitle: "Ask Claw",
+            systemImageName: "bubble.left.and.bubble.right"
+        )
         AppShortcut(
             intent: RunSkillIntent(),
             phrases: [

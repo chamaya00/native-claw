@@ -28,8 +28,9 @@ settings:
 #   ToolsKit    → Tool implementations            (→ MemoryKit)
 #   AgentKit    → engine, budget, persona, gate, model router, profiles (→ MemoryKit, ToolsKit)
 #   SkillsKit   → declarative skills, runner, App Intents/Shortcuts (→ MemoryKit, AgentKit)
+#   VoiceKit    → SpeechAnalyzer STT pipeline + AVSpeechSynthesizer TTS (no deps)
 #   EvalHarness → assistant eval suite + runner   (→ AgentKit, MemoryKit)
-#   LLMChat     → app target / product "Claw"     (→ AgentKit, ToolsKit, MemoryKit, SkillsKit, EvalHarness)
+#   LLMChat     → app target / product "Claw"     (→ AgentKit, ToolsKit, MemoryKit, SkillsKit, VoiceKit, EvalHarness)
 # ---------------------------------------------------------------------------
 
 targets:
@@ -89,6 +90,18 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
 
+  VoiceKit:
+    type: framework
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Packages/VoiceKit/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.charlesamaya.llmchat.VoiceKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+
   EvalHarness:
     type: framework
     platform: iOS
@@ -116,6 +129,7 @@ targets:
       - target: ToolsKit
       - target: MemoryKit
       - target: SkillsKit
+      - target: VoiceKit
       - target: EvalHarness
     settings:
       base:
