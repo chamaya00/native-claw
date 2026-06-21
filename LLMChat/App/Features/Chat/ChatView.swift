@@ -3,6 +3,7 @@ import SwiftData
 import PhotosUI
 import UniformTypeIdentifiers
 import AgentKit
+import VoiceKit
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
@@ -62,9 +63,13 @@ struct ChatView: View {
             )
         }
         .task { await viewModel.startSession() }
+        .task { await viewModel.refreshVoiceSupport() }
         .onDisappear { viewModel.endSession() }
         .onChange(of: isInputFocused) { _, focused in
             if focused { engine.prewarm() }
+        }
+        .onChange(of: viewModel.transcriber.transcript) { _, _ in
+            viewModel.syncDictationToInput()
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
@@ -241,14 +246,14 @@ struct ChatView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .onSubmit { Task { await viewModel.sendMessage() } }
 
-            Button(action: {}) {
-                Image(systemName: "mic")
+            Button(action: { viewModel.toggleDictation() }) {
+                Image(systemName: viewModel.isListening ? "mic.fill" : "mic")
                     .font(.system(size: 20))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(micTint)
                     .frame(width: 36, height: 36)
             }
-            .disabled(true)
-            .accessibilityLabel("Voice input (arrives in Phase 7)")
+            .disabled(!viewModel.isVoiceSupported || viewModel.isResponding)
+            .accessibilityLabel(viewModel.isListening ? "Stop dictation" : "Dictate")
 
             Button(action: { Task { await viewModel.sendMessage() } }) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -267,6 +272,11 @@ struct ChatView: View {
         return (hasText || viewModel.hasPendingImage)
             && !viewModel.isResponding
             && !viewModel.isProcessingImage
+    }
+
+    private var micTint: Color {
+        if !viewModel.isVoiceSupported { return .secondary.opacity(0.5) }
+        return viewModel.isListening ? .red : .secondary
     }
 
     // MARK: - Tool Indicator
@@ -335,6 +345,12 @@ struct ChatView: View {
                     set: { _ in viewModel.toggleResearchMode() }
                 )) {
                     Label("Research mode", systemImage: "magnifyingglass")
+                }
+                Toggle(isOn: Binding(
+                    get: { viewModel.isVoiceModeOn },
+                    set: { _ in viewModel.toggleVoiceMode() }
+                )) {
+                    Label("Speak replies", systemImage: "speaker.wave.2")
                 }
                 Divider()
                 Button("Memory", systemImage: "brain") { showMemoryBrowser = true }

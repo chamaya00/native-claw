@@ -44,6 +44,9 @@ struct ContentView: View {
             // from another device since last run (§Phase 6, mirrors the memory bridge).
             SkillEntityBridge.register(container: modelContext.container)
             SkillSpotlightIndexer.reindexAll(container: modelContext.container)
+            // Let the "Ask Claw" system intent answer headlessly with the app's store
+            // (§Phase 7 system-surface invocation).
+            AssistantIntentBridge.register(container: modelContext.container)
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {

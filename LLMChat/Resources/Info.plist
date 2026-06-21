@@ -28,6 +28,10 @@
 	<string>Claw reads your schedule to answer questions like "what's on tomorrow?" and adds events you approve in chat. Nothing is changed without your confirmation.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Claw looks up people in your Contacts when you ask for someone's number or email. Contact details stay on your device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Claw uses the microphone for voice input. Your speech is transcribed entirely on-device and never leaves your phone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Claw transcribes your speech on-device to let you talk to it. No audio or transcripts are sent off your device.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIBackgroundModes</key>

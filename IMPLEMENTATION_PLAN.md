@@ -105,6 +105,25 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   `Features/Skills` surfaces the inbox/library (approve / edit / run / accept-revision /
   dismiss), and the chat adds a research-mode toggle + banner.
 
+- **Phase 7 — built.** Voice & system-surface invocation. A new `VoiceKit` framework target
+  adds on-device speech I/O: `VoiceTranscriber` drives the modern `SpeechAnalyzer` +
+  `SpeechTranscriber` pipeline (never `SFSpeechRecognizer`; §B DO-NOT) — capturing mic audio
+  via `AVAudioEngine`, converting it to the analyzer's preferred format, streaming
+  `AnalyzerInput`s in, and surfacing volatile + finalized results as one growing transcript;
+  the requested locale is resolved with `SpeechTranscriber.supportedLocale(equivalentTo:)`
+  (the §Phase 7 locale gotcha) and language assets are installed proactively via
+  `AssetInventory.assetInstallationRequest` so first use is instant. `SpeechSpeaker` wraps
+  `AVSpeechSynthesizer` for offline TTS. The chat input's mic button now toggles dictation
+  (transcript mirrors live into the field, gated on availability + record permission), and a
+  **"Speak replies"** toggle reads the finished assistant turn aloud — all on device, no audio
+  or text leaves the phone. **System invocation:** an `AskClawIntent` (`AppIntent`) answers a
+  spoken/typed question headlessly through `AssistantQuickResponder` (a one-shot, read-only,
+  on-device turn with the same persona + top-k memory seed, no tools, nothing persisted — so an
+  out-of-app invocation can never perform an unapproved mutation), wired into the existing
+  `ClawShortcuts: AppShortcutsProvider` alongside the Phase-6 `RunSkillIntent` so Claw is
+  reachable from Siri, the Action button, Spotlight, and the Shortcuts app. New Info.plist
+  microphone + speech-recognition usage strings.
+
 **Deviations from the letter of this plan (intentional):**
 
 1. **Modules are XcodeGen framework targets, not separate `Package.swift` packages.**
@@ -223,6 +242,20 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
     cycle. Like Phase-5 routine suggestion it runs periodically off the streaming path, but it's
     kicked from `ChatViewModel` after a turn completes — keeping `AgentKit` free of any skill
     dependency while preserving the same propose-then-approve cadence.
+22. **Dictation is explicit press-to-talk, not continuous voice-activity detection.** The plan
+    notes `SpeechDetector` for VAD as an optional add. Claw's first voice surface is a mic
+    button the user taps to start/stop, which is unambiguous, battery-friendly, and avoids a
+    hot mic — `SpeechDetector` is a documented seam (add the module to the `SpeechAnalyzer`)
+    if hands-free capture is wanted later. The STT/asset/locale machinery it would plug into
+    already ships.
+23. **System invocation answers via a one-shot read-only intent, not a live engine turn.** A
+    system-surface invocation has no streaming UI and no live `ConversationEngine`, so
+    `AskClawIntent` runs `AssistantQuickResponder` — a single on-device `respond(to:)` seeded
+    with the same persona + top-k memory, **no tools, nothing persisted**. This keeps the
+    out-of-app path structurally incapable of an unapproved mutation (§B) while still being
+    personalized; escalating a large out-of-app ask to PCC is the same one-function Phase-4
+    seam. The WWDC26 App Intents *assistant schemas* (`@AssistantIntent`) remain the documented
+    one-annotation upgrade over the stable `AppIntent` surface adopted here (mirrors deviation 20).
 
 -----
 

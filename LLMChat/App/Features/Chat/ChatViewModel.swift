@@ -4,6 +4,7 @@ import PDFKit
 import MemoryKit
 import AgentKit
 import SkillsKit
+import VoiceKit
 
 @Observable
 @MainActor
@@ -27,6 +28,20 @@ final class ChatViewModel {
     /// Whether the focused research subagent is active (§Phase 6 Dynamic Profiles). When on,
     /// turns run in an isolated context and are not saved to the main conversation.
     var isResearchMode: Bool = false
+
+    // MARK: - Voice (Phase 7)
+
+    /// On-device dictation (SpeechAnalyzer) and TTS (AVSpeechSynthesizer). All processing stays
+    /// on device — no audio or text leaves the phone.
+    let transcriber = VoiceTranscriber()
+    let speaker = SpeechSpeaker()
+
+    /// When on, the assistant's final reply is spoken aloud.
+    var isVoiceModeOn: Bool = false
+    /// Whether on-device speech recognition is usable for the current language (checked on appear).
+    var isVoiceSupported: Bool = false
+
+    var isListening: Bool { transcriber.isListening }
 
     /// Turns since the last skill-suggestion pass. Skills are proposed periodically off the
     /// streaming path (mirrors routine suggestion), at a slightly longer cadence.
@@ -56,12 +71,16 @@ final class ChatViewModel {
     }
 
     func endSession() {
+        speaker.stop()
+        Task { await transcriber.stop() }
         engine.invalidate()
     }
 
     // MARK: - Sending Messages
 
     func sendMessage() async {
+        // End dictation before sending so the captured text is final and the mic releases.
+        if transcriber.isListening { await transcriber.stop() }
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let digest = pendingImageDigest
         guard (!text.isEmpty || digest != nil), !isResponding else { return }
@@ -106,6 +125,8 @@ final class ChatViewModel {
                 messages[idx].toolCallsMade = engine.lastTurnToolCalls
                 messages[idx].tierLabel = engine.lastResponseTier?.shortLabel
                 messages[idx].tierSystemImage = engine.lastResponseTier?.systemImage
+                // Voice mode: read the finished reply aloud (§Phase 7, on-device TTS).
+                if isVoiceModeOn { speaker.speak(messages[idx].content) }
             }
         } catch {
             if let idx = messages.firstIndex(where: { $0.id == placeholderID }) {
@@ -117,6 +138,32 @@ final class ChatViewModel {
 
         isResponding = false
         maybeSuggestSkills()
+    }
+
+    // MARK: - Voice control (Phase 7)
+
+    /// Resolve whether on-device dictation is usable for the current language. Called on appear so
+    /// the mic button can disable gracefully on unsupported locales/SDKs (§B availability gating).
+    func refreshVoiceSupport() async {
+        isVoiceSupported = await VoiceTranscriber.isSupported()
+    }
+
+    /// Start/stop dictation. While listening, the transcript is mirrored into the input field by
+    /// the view; stopping leaves the text in place for the user to review or send.
+    func toggleDictation() {
+        if speaker.isSpeaking { speaker.stop() }
+        Task { await transcriber.toggle() }
+    }
+
+    /// Mirror the live transcript into the input field while dictating.
+    func syncDictationToInput() {
+        if transcriber.isListening { inputText = transcriber.transcript }
+    }
+
+    /// Toggle whether replies are spoken aloud. Turning it off stops any in-flight speech.
+    func toggleVoiceMode() {
+        isVoiceModeOn.toggle()
+        if !isVoiceModeOn { speaker.stop() }
     }
 
     // MARK: - Research mode (Phase 6 Dynamic Profiles)

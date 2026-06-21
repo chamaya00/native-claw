@@ -22,7 +22,8 @@ This repository executes the phased build in
 | **4** | Model routing, PCC escalation policy, Evaluations harness | ✅ built |
 | **5** | Preference learning + opt-in proactivity (suggested routines + briefing) | ✅ built |
 | **6** | Skills & subagents: declarative routines + Dynamic Profiles | ✅ built |
-| 7–8 | Voice & system-surface invocation, premium + public beta | planned |
+| **7** | Voice (on-device STT/TTS) + system-surface invocation (Siri/Action button/Spotlight/Shortcuts) | ✅ built |
+| 8 | Premium, onboarding magic moment + public beta | planned |
 
 ## Architecture
 
@@ -37,6 +38,8 @@ LLMChat/
 │   ├── ToolsKit/                # Tool implementations (memory tools + createReminder)
 │   ├── AgentKit/                # AvailabilityService, PersonaStore, ContextBudget,
 │   │                            #   ApprovalGate, ConversationEngine, ModelRouter
+│   ├── SkillsKit/               # declarative skills, runner, App Intents/Shortcuts (Phase 6–7)
+│   ├── VoiceKit/                # on-device STT (SpeechAnalyzer) + TTS (AVSpeechSynthesizer) (Phase 7)
 │   └── EvalHarness/             # assistant eval suite + runner (Phase 4)
 ├── App/                         # app target (product "Claw")
 │   ├── LLMChatApp.swift         #   entry point + ModelContainer
