@@ -15,6 +15,7 @@ struct ChatView: View {
     @State private var showSkills = false
     @State private var showFilePicker = false
     @State private var showPhotoPicker = false
+    @State private var showPaywall = false
     @State private var selectedPhoto: PhotosPickerItem?
 
     private let engine: ConversationEngine
@@ -61,6 +62,7 @@ struct ChatView: View {
                 selection: $selectedPhoto,
                 matching: .images
             )
+            .sheet(isPresented: $showPaywall) { PaywallView() }
         }
         .task { await viewModel.startSession() }
         .task { await viewModel.refreshVoiceSupport() }
@@ -357,6 +359,7 @@ struct ChatView: View {
                 Button("Skills", systemImage: "wand.and.rays") { showSkills = true }
                 Button("Suggestions", systemImage: "wand.and.stars") { showSuggestions = true }
                 Button("Model routing", systemImage: "arrow.triangle.branch") { showRoutingSettings = true }
+                Button("Claw Premium", systemImage: "crown") { showPaywall = true }
                 Button("Import file", systemImage: "doc.badge.plus") { showFilePicker = true }
                 Divider()
                 Button("Clear conversation", systemImage: "trash", role: .destructive) {

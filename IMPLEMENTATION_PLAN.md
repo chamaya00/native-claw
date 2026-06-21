@@ -124,6 +124,22 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
   reachable from Siri, the Action button, Spotlight, and the Shortcuts app. New Info.plist
   microphone + speech-recognition usage strings.
 
+- **Phase 8 — built.** Premium, onboarding magic moment, public-beta readiness. **Magic
+  moment:** after the persona is shaped, onboarding offers a value-framed step that — with
+  progressive calendar + reminders access — runs `MagicMomentService` (`AgentKit`) to read
+  *today's* already-on-device data and generate **one** strikingly relevant observation with the
+  on-device model, entirely privately; it degrades silently if access is denied or the day is
+  empty. **Premium (StoreKit 2):** `PremiumStore` (`AgentKit`) loads the subscription products,
+  reconciles `Transaction.currentEntitlements`, listens to `Transaction.updates`, and mirrors the
+  result into a process-wide `PremiumEntitlement` gate that `ModelRouter` consults — so the
+  **third-party cloud reasoning tier is premium-only** while the free tier stays fully usable
+  on-device + PCC (paid = cloud). A `PaywallView` (`Features/Premium`) surfaces the offer from the
+  chat menu and routing settings, with graceful "unavailable" handling when products aren't
+  configured. **Metrics:** privacy-respecting, content-free aggregate counters (`UsageCounter` +
+  `Metrics` in `MemoryKit`) track the north-star signals — activation, magic-moment shown,
+  preference-picker offered/answered, suggestion approval, routine pausing — entirely on device
+  (no analytics SDK, no network), surfaced in a "Your usage" settings section.
+
 **Deviations from the letter of this plan (intentional):**
 
 1. **Modules are XcodeGen framework targets, not separate `Package.swift` packages.**
@@ -256,6 +272,26 @@ Companion to `PRD_consumer_assistant.md` (v0.3). This document is written for **
     personalized; escalating a large out-of-app ask to PCC is the same one-function Phase-4
     seam. The WWDC26 App Intents *assistant schemas* (`@AssistantIntent`) remain the documented
     one-annotation upgrade over the stable `AppIntent` surface adopted here (mirrors deviation 20).
+24. **Premium gates the third-party tier via a process-wide entitlement, not a router dependency
+    on StoreKit.** `ModelRouter` stays UI- and store-free: it reads a tiny `PremiumEntitlement`
+    boolean that `PremiumStore` keeps in step with the live StoreKit 2 entitlement. So "paid =
+    cloud" is enforced at the one place routing decides the tier, without `AgentKit`'s policy core
+    importing the subscription machinery. The concrete subscription **products** (and the App
+    Store Connect subscription group) are an account-level provisioning prerequisite — until they
+    exist, `products` loads empty and the paywall shows an "unavailable" state rather than failing;
+    the gate, metering, and transparency already ship (mirrors the PCC-binding seam, deviation 11).
+25. **The magic moment reads calendar + reminders, the data already on device at first run.** The
+    plan calls for "an on-device pass over already-available data (today's calendar/reminders)";
+    `MagicMomentService` does exactly that via EventKit (the usage strings already ship from
+    Phases 1–2) and the on-device model, behind a progressive, value-framed permission step.
+    Widening the sources (Health, Photos, …) is additive behind the same opt-in.
+26. **North-star metrics are on-device aggregate counters, not a telemetry pipeline.** The PRD
+    wants activation, preference-picker participation, suggestion-approval, and routine-pause
+    signals; these are realised as content-free `UsageCounter` tallies in the synced store (§B: no
+    personal data leaves the device — there is no analytics service or network call). They reveal
+    usage *shape* for product decisions while staying inside the privacy boundary; an external,
+    privacy-preserving aggregation (if ever wanted for the beta) is a documented seam at the
+    `Metrics` call sites.
 
 -----
 

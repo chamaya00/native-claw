@@ -17,6 +17,11 @@ final class OnboardingViewModel {
     var isComplete: Bool = false
     var personaPreview: PersonaPreview?
 
+    /// Onboarding stages. After the persona is shaped we offer a personalized "magic moment"
+    /// built from data already on the device (§Phase 8) before handing off to the chat.
+    enum Stage { case chatting, magicOffer, revealing, revealed }
+    var stage: Stage = .chatting
+
     struct PersonaPreview {
         var name: String
         var vibe: String
@@ -102,10 +107,54 @@ final class OnboardingViewModel {
             showSavedToast = true
             try await Task.sleep(for: .seconds(2.5))
             showSavedToast = false
-            isComplete = true
+            // Offer the personalized first impression before entering the app (§Phase 8).
+            stage = .magicOffer
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    // MARK: - Magic moment (Phase 8)
+
+    /// Request calendar + reminders access (value already framed in the UI), read today's data
+    /// on-device, and surface one strikingly relevant observation. Degrades silently if access
+    /// is denied or the day is empty.
+    func revealMagicMoment() async {
+        stage = .revealing
+        let access = await MagicMomentService.requestAccess()
+
+        var observation: String?
+        if access.anyGranted {
+            observation = await MagicMomentService.generateObservation(persona: currentPersona())
+        }
+
+        if let observation {
+            messages.append(ChatMessage(role: "assistant", content: observation))
+            Metrics.increment(.magicMomentShown, in: ModelContext(container))
+        } else {
+            let name = currentPersona()?.name ?? "I"
+            messages.append(ChatMessage(
+                role: "assistant",
+                content: "\(name == "I" ? "I'm" : name + " is") all set. Tell me what's on your plate and we'll get going."
+            ))
+        }
+        stage = .revealed
+    }
+
+    /// Skip the magic moment and enter the app.
+    func skipMagicMoment() {
+        finishOnboarding()
+    }
+
+    /// Complete onboarding and hand off to the chat. Records first-time activation.
+    func finishOnboarding() {
+        Metrics.recordOnce(.activated, in: ModelContext(container))
+        isComplete = true
+    }
+
+    private func currentPersona() -> Persona? {
+        let context = ModelContext(container)
+        return (try? context.fetch(FetchDescriptor<Persona>()))?.first
     }
 
     // MARK: - Persist Persona

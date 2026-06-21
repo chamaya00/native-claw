@@ -19,7 +19,7 @@ struct OnboardingView: View {
                 header
                 messageList
                 Divider()
-                inputBar
+                bottomBar
             }
 
             if viewModel.showSavedToast {
@@ -80,6 +80,80 @@ struct OnboardingView: View {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
+    }
+
+    // MARK: - Bottom bar (switches by onboarding stage)
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        switch viewModel.stage {
+        case .chatting:
+            inputBar
+        case .magicOffer:
+            magicOffer
+        case .revealing:
+            magicRevealing
+        case .revealed:
+            magicContinue
+        }
+    }
+
+    // MARK: - Magic moment (Phase 8)
+
+    private var magicOffer: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 4) {
+                Image(systemName: "sparkles").font(.title2).foregroundStyle(.tint)
+                Text("Want a personalized first impression?")
+                    .font(.subheadline.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text("With your OK, Claw glances at today's calendar and reminders — entirely on-device — to say something that actually fits your day. Nothing leaves your phone.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                Task { await viewModel.revealMagicMoment() }
+            } label: {
+                Text("Show me")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+            }
+
+            Button("Maybe later") { viewModel.skipMagicMoment() }
+                .font(.subheadline)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+    }
+
+    private var magicRevealing: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+            Text("Reading today, on-device…").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .background(Color(.systemBackground))
+    }
+
+    private var magicContinue: some View {
+        Button {
+            viewModel.finishOnboarding()
+        } label: {
+            Text("Let's go")
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(.white)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
     }
 
     // MARK: - Input Bar

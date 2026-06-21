@@ -23,7 +23,7 @@ This repository executes the phased build in
 | **5** | Preference learning + opt-in proactivity (suggested routines + briefing) | ✅ built |
 | **6** | Skills & subagents: declarative routines + Dynamic Profiles | ✅ built |
 | **7** | Voice (on-device STT/TTS) + system-surface invocation (Siri/Action button/Spotlight/Shortcuts) | ✅ built |
-| 8 | Premium, onboarding magic moment + public beta | planned |
+| **8** | Premium (StoreKit 2, paid = cloud), onboarding magic moment, on-device north-star metrics | ✅ built |
 
 ## Architecture
 
