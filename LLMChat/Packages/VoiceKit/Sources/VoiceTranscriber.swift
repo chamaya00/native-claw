@@ -238,7 +238,7 @@ private final class BufferConverter: @unchecked Sendable {
 
         var fed = false
         var conversionError: NSError?
-        converter.convert(to: output, error: &conversionError) { _, statusPtr in
+        _ = converter.convert(to: output, error: &conversionError) { _, statusPtr in
             if fed {
                 statusPtr.pointee = .noDataNow
                 return nil
