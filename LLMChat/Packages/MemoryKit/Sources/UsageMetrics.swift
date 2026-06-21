@@ -16,7 +16,7 @@ import SwiftData
 public final class UsageCounter {
     public var key: String = ""
     public var count: Int = 0
-    public var updatedAt: Date = .now
+    public var updatedAt: Date = Date.now
 
     public init(key: String = "", count: Int = 0) {
         self.key = key
