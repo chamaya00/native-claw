@@ -88,6 +88,27 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | bundle exec xcpretty
 
+      # Archive for a generic iOS *device* in the Release configuration, with
+      # signing disabled. This is a cheap proxy for the TestFlight deploy: it
+      # exercises the exact compile + archive path the `beta` lane uses
+      # (Release config, device SDK) minus signing/upload, so Release-only
+      # build failures are caught here on the PR instead of surfacing later in
+      # the deploy. The Debug/simulator build above does NOT catch these
+      # because Release optimisations and the device SDK differ.
+      - name: Archive for device (Release, unsigned)
+        working-directory: LLMChat
+        run: |
+          xcodebuild archive \
+            -project LLMChat.xcodeproj \
+            -scheme LLMChat \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/LLMChat.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            | bundle exec xcpretty
+
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

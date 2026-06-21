@@ -20,7 +20,9 @@ This repository executes the phased build in
 | **2** | Tool library, multimodal capture, dynamic tool selection | ✅ built |
 | **3** | Memory loop: CloudKit sync, local RAG, "what you know about me" | ✅ built |
 | **4** | Model routing, PCC escalation policy, Evaluations harness | ✅ built |
-| 5–8 | Preference learning, skills/subagents, voice, premium + beta | planned |
+| **5** | Preference learning + opt-in proactivity (suggested routines + briefing) | ✅ built |
+| **6** | Skills & subagents: declarative routines + Dynamic Profiles | ✅ built |
+| 7–8 | Voice & system-surface invocation, premium + public beta | planned |
 
 ## Architecture
 
@@ -93,9 +95,16 @@ LLMChat/
 GitHub Actions (no Mac required for the developer):
 
 - **build.yml** — every push/PR: selects Xcode 26 (so `canImport(FoundationModels)`
-  is true), runs `xcodegen generate`, builds the **LLMChat** scheme for the simulator.
+  is true), runs `xcodegen generate`, builds the **LLMChat** scheme for the
+  simulator (Debug), then archives it for a generic iOS **device** in **Release**
+  (unsigned). The Release archive is a cheap proxy for the deploy: it catches
+  Release-only compile/archive failures on the PR instead of letting them surface
+  later in TestFlight.
 - **generate.yml** — on `project.yml` changes to `main`: regenerates and commits the `.xcodeproj`.
-- **deploy.yml** — manual or tag push: signs via Fastlane Match and uploads to TestFlight.
+- **deploy.yml** — manual/`workflow_dispatch` (against any branch) or tag push:
+  signs via Fastlane Match and uploads to TestFlight, then publishes a
+  `testflight/deploy` commit status on the head SHA so an automated run can
+  observe the result.
 
 The `.xcodeproj` is regenerated from `project.yml` on every CI run, so it does not
 need to be committed by hand.

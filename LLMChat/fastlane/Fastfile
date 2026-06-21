@@ -33,6 +33,30 @@ platform :ios do
   end
 
   # ───────────────────────────────────────────
+  # Release archive proxy (no signing) — cheap stand-in for the deploy
+  # ───────────────────────────────────────────
+  # Exercises the same Release-config, generic-iOS-device archive path the
+  # `beta` lane uses, but with signing disabled and no upload. Catches
+  # Release-only compile/archive failures on a PR before a TestFlight run is
+  # ever attempted. Mirror this with the "Archive for device (Release,
+  # unsigned)" step in .github/workflows/build.yml so the two cannot drift.
+  desc "Archive in Release config without signing (deploy proxy)"
+  lane :archive_check do
+    generate_project
+
+    gym(
+      project: "LLMChat.xcodeproj",
+      scheme: "LLMChat",
+      configuration: "Release",
+      destination: "generic/platform=iOS",
+      skip_package_ipa: true,
+      skip_codesigning: true,
+      clean: true,
+      xcargs: "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
+    )
+  end
+
+  # ───────────────────────────────────────────
   # Run unit tests
   # ───────────────────────────────────────────
   desc "Run tests"

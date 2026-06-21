@@ -11,6 +11,14 @@ on:
     tags:
       - "v*.*.*"
 
+# `statuses: write` lets the final step publish a `testflight/deploy` commit
+# status on the head SHA. When this workflow is dispatched against a phase PR
+# branch, that status appears on the PR and wakes the orchestrating Claude
+# session via PR activity — no human copy-paste of the result is needed.
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   deploy:
     name: Deploy to TestFlight
@@ -86,3 +94,24 @@ jobs:
           name: LLMChat-${{ github.ref_name }}.ipa
           path: LLMChat/build/*.ipa
           retention-days: 30
+
+      # Publish the outcome as a commit status on the dispatched ref's head
+      # SHA. `if: always()` ensures both success and failure are reported, so
+      # the orchestrating session is woken either way and never waits forever.
+      - name: Report deploy result as commit status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            STATE="success"
+            DESCRIPTION="TestFlight deploy succeeded"
+          else
+            STATE="failure"
+            DESCRIPTION="TestFlight deploy failed — see run logs"
+          fi
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$STATE" \
+            -f context="testflight/deploy" \
+            -f description="$DESCRIPTION" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
