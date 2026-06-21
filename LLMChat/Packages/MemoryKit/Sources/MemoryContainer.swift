@@ -32,7 +32,8 @@ public enum MemoryContainer {
             SuggestedRoutine.self,
             Skill.self,
             StreamlineGrant.self,
-            RoutingPolicy.self
+            RoutingPolicy.self,
+            UsageCounter.self
         ])
     }
 

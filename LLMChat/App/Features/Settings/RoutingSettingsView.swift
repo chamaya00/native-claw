@@ -13,9 +13,11 @@ struct RoutingSettingsView: View {
     @Query private var policies: [RoutingPolicy]
 
     private let engine: ConversationEngine
+    private let premium = PremiumStore.shared
 
     @State private var isRunningEvals = false
     @State private var report: EvalReport?
+    @State private var showPaywall = false
 
     init(engine: ConversationEngine) {
         self.engine = engine
@@ -29,11 +31,14 @@ struct RoutingSettingsView: View {
             privacySection
             escalationSection
             pccBudgetSection
+            premiumSection
+            usageSection
             evalSection
         }
         .navigationTitle("Model routing")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { ensurePolicy() }
+        .sheet(isPresented: $showPaywall) { PaywallView() }
     }
 
     // MARK: - Where the last turn went (transparency)
@@ -75,11 +80,27 @@ struct RoutingSettingsView: View {
         if let policy, !policy.onDeviceOnly {
             Section {
                 Toggle("Private Cloud Compute", isOn: bind(\.allowPrivateCloudCompute))
-                Toggle("Third-party cloud", isOn: bind(\.allowThirdParty))
-                if policy.allowThirdParty {
-                    TextField("Provider", text: bind(\.thirdPartyProvider))
-                        .textInputAutocapitalization(.never)
+
+                // Third-party cloud is the premium tier (§Phase 8). Without a subscription it's
+                // gated behind the paywall and never routed to, even if previously opted in.
+                if premium.isSubscribed {
+                    Toggle("Third-party cloud", isOn: bind(\.allowThirdParty))
+                    if policy.allowThirdParty {
+                        TextField("Provider", text: bind(\.thirdPartyProvider))
+                            .textInputAutocapitalization(.never)
+                    }
+                } else {
+                    Button { showPaywall = true } label: {
+                        HStack {
+                            Text("Third-party cloud").foregroundStyle(.primary)
+                            Spacer()
+                            Label("Premium", systemImage: "crown.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tint)
+                        }
+                    }
                 }
+
                 Picker("Reasoning tasks", selection: reasoningTierBinding) {
                     Text(ModelTier.onDevice.displayName).tag(ModelTier.onDevice)
                     Text(ModelTier.privateCloudCompute.displayName).tag(ModelTier.privateCloudCompute)
@@ -87,7 +108,7 @@ struct RoutingSettingsView: View {
             } header: {
                 Text("Escalation")
             } footer: {
-                Text("Everyday chat always stays on-device. Hard, multi-step work can escalate to the tier you pick here. Third-party cloud is the only path that leaves Apple's privacy boundary, so it's opt-in.")
+                Text("Everyday chat always stays on-device. Hard, multi-step work can escalate to the tier you pick here. Third-party cloud is a premium tier and the only path that leaves Apple's privacy boundary, so it's opt-in.")
             }
         }
     }
@@ -101,6 +122,41 @@ struct RoutingSettingsView: View {
                 LabeledContent("Used today", value: "\(policy.pccUsedToday) / \(policy.pccDailyLimit)")
                 Stepper("Daily limit: \(policy.pccDailyLimit)", value: bind(\.pccDailyLimit), in: 0...500, step: 10)
             }
+        }
+    }
+
+    // MARK: - Premium (Phase 8)
+
+    private var premiumSection: some View {
+        Section {
+            if premium.isSubscribed {
+                Label("Claw Premium active", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(.tint)
+            } else {
+                Button {
+                    showPaywall = true
+                } label: {
+                    Label("Unlock cloud reasoning", systemImage: "crown.fill")
+                }
+            }
+        } header: {
+            Text("Premium")
+        } footer: {
+            Text("The free tier is fully usable on-device. Premium adds the opt-in third-party cloud reasoning tier for the hardest work.")
+        }
+    }
+
+    // MARK: - Usage (Phase 8 north-star signals, on-device only)
+
+    private var usageSection: some View {
+        Section {
+            ForEach(UsageMetric.allCases, id: \.self) { metric in
+                LabeledContent(metric.label, value: "\(Metrics.count(metric, in: modelContext))")
+            }
+        } header: {
+            Text("Your usage")
+        } footer: {
+            Text("Aggregate counts kept on-device (and in your private iCloud) to help Claw improve — no analytics service, no content, nothing sent anywhere.")
         }
     }
 

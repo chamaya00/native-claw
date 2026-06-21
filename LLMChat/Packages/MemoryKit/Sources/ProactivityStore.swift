@@ -105,6 +105,7 @@ public func approvedRoutines(context: ModelContext) -> [SuggestedRoutine] {
 public func approveRoutine(_ routine: SuggestedRoutine, context: ModelContext) {
     routine.status = RoutineStatus.approved.rawValue
     try? context.save()
+    Metrics.increment(.suggestionApproved, in: context)
 }
 
 /// Dismiss a suggestion. The row is kept (not deleted) as a negative signal so the
@@ -135,4 +136,5 @@ public func updateRoutine(
 public func pauseRoutine(_ routine: SuggestedRoutine, context: ModelContext) {
     routine.status = RoutineStatus.suggested.rawValue
     try? context.save()
+    Metrics.increment(.routinePaused, in: context)
 }

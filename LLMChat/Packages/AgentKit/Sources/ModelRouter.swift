@@ -116,8 +116,13 @@ public final class ModelRouter {
             return (.onDevice, "Handled on-device.")
 
         case .thirdParty:
+            // Third-party cloud is the premium tier (§Phase 8): paid = cloud. Without an active
+            // subscription it's never used, even if opted in — the free tier stays on-device/PCC.
+            if !PremiumEntitlement.isActive {
+                return demoteFromCloud(policy: policy, blocked: "Third-party cloud is a premium feature")
+            }
             if policy.allowThirdParty, !policy.thirdPartyProvider.isEmpty {
-                return (.thirdParty, "Routed to \(policy.thirdPartyProvider) (opt-in cloud).")
+                return (.thirdParty, "Routed to \(policy.thirdPartyProvider) (premium cloud).")
             }
             // Third-party not permitted → try PCC, else on-device.
             return demoteFromCloud(policy: policy, blocked: "Third-party cloud is off")

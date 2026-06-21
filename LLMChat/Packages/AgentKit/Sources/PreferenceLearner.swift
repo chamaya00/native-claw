@@ -78,6 +78,7 @@ public final class PreferenceLearner {
                 valueB: spec.valueB
             )
             markOffered()
+            Metrics.increment(.preferenceOffered, in: ModelContext(container))
         } catch {
             return
         }
@@ -96,6 +97,7 @@ public final class PreferenceLearner {
             chosenValue: pickedA ? choice.valueA : choice.valueB,
             context: context
         )
+        Metrics.increment(.preferenceAnswered, in: context)
         pendingChoice = nil
     }
 

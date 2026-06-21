@@ -48,6 +48,9 @@ struct ContentView: View {
             // (§Phase 7 system-surface invocation).
             AssistantIntentBridge.register(container: modelContext.container)
         }
+        // Reconcile the StoreKit subscription entitlement so the router's premium gate
+        // (third-party cloud tier) reflects reality from launch (§Phase 8).
+        .task { await PremiumStore.shared.start() }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
