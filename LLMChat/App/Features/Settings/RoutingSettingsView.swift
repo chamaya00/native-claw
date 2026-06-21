@@ -186,7 +186,7 @@ struct RoutingSettingsView: View {
         } header: {
             Text("Evaluations")
         } footer: {
-            Text("Measures the on-device model on representative assistant tasks — extraction, classification, summarisation, reasoning — so routing is decided from data, not guesses. Private Cloud Compute rows activate once its model binding is provisioned on a device.")
+            Text("Measures on-device and Private Cloud Compute on the same representative assistant tasks — extraction, classification, summarisation, reasoning — side by side, so routing is decided from data, not guesses. PCC rows run on a device with Apple Intelligence; third-party rows activate once a provider package is added.")
         }
     }
 

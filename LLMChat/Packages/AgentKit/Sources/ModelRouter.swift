@@ -6,9 +6,9 @@ import MemoryKit
 /// The outcome of routing one turn (§Phase 4). Separates *intent* from *reality*:
 ///   • `policyTier` — what the user's `RoutingPolicy`, the task kind, and the token
 ///     pressure selected. This is the real, fully-tested decision.
-///   • `boundTier`  — the tier that actually backs the session in *this* build. The
-///     concrete Private Cloud Compute / third-party model bindings are documented seams
-///     that can't be verified without a device, so they degrade to on-device for now.
+///   • `boundTier`  — the tier that actually backs the session in *this* build. On-device
+///     and Private Cloud Compute are real bindings (the WWDC26 `LanguageModel` protocol);
+///     the third-party tier still awaits a provider SPM package and degrades to on-device.
 /// `degraded` is true when reality couldn't meet intent, and `reason` explains why — both
 /// surface in the routing settings so the user always knows where their data went.
 public struct RoutingResolution: Sendable, Equatable {
@@ -33,11 +33,11 @@ public struct RoutingResolution: Sendable, Equatable {
 /// keep, §deviation 4).
 ///
 /// **Binding seam.** Resolving *which* tier should run is real and tested here. *Binding*
-/// a non-on-device tier to a concrete FoundationModels model (`PrivateCloudComputeLanguageModel`,
-/// a third-party provider via SPM) is a WWDC26 surface that can't be compile-verified
-/// without a device, so `bind(_:)` currently degrades any cloud tier to on-device and
-/// flags it. The day the binding lands it's a one-function change; the policy, metering,
-/// and transparency around it already ship.
+/// a tier to a concrete FoundationModels model happens in `ConversationEngine` via the
+/// WWDC26 `LanguageModel` protocol (`SystemLanguageModel.default` ↔ `PrivateCloudComputeLanguageModel`).
+/// On-device and PCC are real bindings now; only the third-party tier still awaits a
+/// provider SPM package, so `bind(_:)` degrades *that* tier to on-device and flags it.
+/// The policy, metering, and transparency around every tier already ship.
 @Observable
 @MainActor
 public final class ModelRouter {
@@ -148,14 +148,16 @@ public final class ModelRouter {
         return (.onDevice, "\(blocked) — kept on-device.")
     }
 
-    /// Bind a policy tier to a model the current build can run. On-device is concrete;
-    /// cloud tiers are the documented seam (see type doc) and degrade to on-device.
+    /// Bind a policy tier to a model the current build can run. On-device and Private Cloud
+    /// Compute are real bindings (the engine instantiates `SystemLanguageModel.default` and
+    /// `PrivateCloudComputeLanguageModel` respectively). Third-party still awaits a provider
+    /// SPM package, so it degrades to on-device and flags the degradation.
     private func bind(_ tier: ModelTier) -> (ModelTier, String?) {
         switch tier {
         case .onDevice:
             return (.onDevice, nil)
         case .privateCloudCompute:
-            return (.onDevice, "Private Cloud Compute is selected by policy; its model binding is pending device provisioning, so this turn ran on-device.")
+            return (.privateCloudCompute, nil)
         case .thirdParty:
             return (.onDevice, "Third-party provider binding is pending; this turn ran on-device.")
         }
