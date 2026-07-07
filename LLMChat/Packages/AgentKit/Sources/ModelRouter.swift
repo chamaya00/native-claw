@@ -6,9 +6,10 @@ import MemoryKit
 /// The outcome of routing one turn (§Phase 4). Separates *intent* from *reality*:
 ///   • `policyTier` — what the user's `RoutingPolicy`, the task kind, and the token
 ///     pressure selected. This is the real, fully-tested decision.
-///   • `boundTier`  — the tier that actually backs the session in *this* build. On-device
-///     and Private Cloud Compute are real bindings (the WWDC26 `LanguageModel` protocol);
-///     the third-party tier still awaits a provider SPM package and degrades to on-device.
+///   • `boundTier`  — the tier that actually backs the session in *this* build. On-device is
+///     always concrete; Private Cloud Compute is a real binding only in an iOS 27 SDK build
+///     (`-D FM_PCC`) and otherwise degrades to on-device; the third-party tier still awaits a
+///     provider SPM package and degrades to on-device.
 /// `degraded` is true when reality couldn't meet intent, and `reason` explains why — both
 /// surface in the routing settings so the user always knows where their data went.
 public struct RoutingResolution: Sendable, Equatable {
@@ -35,9 +36,10 @@ public struct RoutingResolution: Sendable, Equatable {
 /// **Binding seam.** Resolving *which* tier should run is real and tested here. *Binding*
 /// a tier to a concrete FoundationModels model happens in `ConversationEngine` via the
 /// WWDC26 `LanguageModel` protocol (`SystemLanguageModel.default` ↔ `PrivateCloudComputeLanguageModel`).
-/// On-device and PCC are real bindings now; only the third-party tier still awaits a
-/// provider SPM package, so `bind(_:)` degrades *that* tier to on-device and flags it.
-/// The policy, metering, and transparency around every tier already ship.
+/// That protocol ships in the iOS 27 SDK, so PCC binds for real only in an `-D FM_PCC` build;
+/// the default (iOS 26 SDK) build degrades PCC to on-device. Third-party always degrades until
+/// a provider SPM package is added. Either way `bind(_:)` flags the degradation, and the
+/// policy, metering, and transparency around every tier already ship.
 @Observable
 @MainActor
 public final class ModelRouter {
@@ -166,16 +168,21 @@ public final class ModelRouter {
         return (.onDevice, "\(blocked) — kept on-device.")
     }
 
-    /// Bind a policy tier to a model the current build can run. On-device and Private Cloud
-    /// Compute are real bindings (the engine instantiates `SystemLanguageModel.default` and
-    /// `PrivateCloudComputeLanguageModel` respectively). Third-party still awaits a provider
-    /// SPM package, so it degrades to on-device and flags the degradation.
+    /// Bind a policy tier to a model the current build can run. On-device is always concrete.
+    /// Private Cloud Compute is a real binding *only when built against the iOS 27 SDK with
+    /// `-D FM_PCC`* — `PrivateCloudComputeLanguageModel` doesn't exist in the iOS 26 SDK, so
+    /// the default build degrades PCC to on-device and says so, keeping the transparency chip
+    /// honest. Third-party still awaits a provider SPM package and always degrades for now.
     private func bind(_ tier: ModelTier) -> (ModelTier, String?) {
         switch tier {
         case .onDevice:
             return (.onDevice, nil)
         case .privateCloudCompute:
+#if FM_PCC
             return (.privateCloudCompute, nil)
+#else
+            return (.onDevice, "Private Cloud Compute needs an iOS 27 SDK build (FM_PCC); this turn ran on-device.")
+#endif
         case .thirdParty:
             return (.onDevice, "Third-party provider binding is pending; this turn ran on-device.")
         }

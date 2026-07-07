@@ -110,6 +110,11 @@ public final class ConversationEngine {
     /// protocol). On-device and Private Cloud Compute are real bindings — PCC opens the 32K
     /// reasoning window with no API keys or auth. Third-party still awaits a provider SPM
     /// package, so it falls back to on-device (the router already flags that as degraded).
+    ///
+    /// Gated on `FM_PCC`: `LanguageModel`/`PrivateCloudComputeLanguageModel` ship in the
+    /// iOS 27 SDK (Xcode 27), not the iOS 26 SDK the default build compiles against, so this
+    /// is only compiled when the build opts in with `-D FM_PCC`. See `buildSession`.
+#if FM_PCC
     private func model(for tier: ModelTier) -> any LanguageModel {
         switch tier {
         case .onDevice: return SystemLanguageModel.default
@@ -117,6 +122,7 @@ public final class ConversationEngine {
         case .thirdParty: return SystemLanguageModel.default
         }
     }
+#endif
 #endif
 
     public init(container: ModelContainer) {
@@ -195,15 +201,19 @@ public final class ConversationEngine {
             stylePrefs: stylePrefs,
             condensedSummary: condensedSummary
         )
-        session = LanguageModelSession(
-            model: model(for: tier),
-            tools: buildTools(
-                container: container,
-                onEvent: makeEventHandler(),
-                selecting: attachedToolNames
-            ),
-            instructions: instructions
+        let tools = buildTools(
+            container: container,
+            onEvent: makeEventHandler(),
+            selecting: attachedToolNames
         )
+#if FM_PCC
+        // Real per-tier binding (iOS 27 SDK): on-device ↔ Private Cloud Compute.
+        session = LanguageModelSession(model: model(for: tier), tools: tools, instructions: instructions)
+#else
+        // iOS 26 SDK: only the on-device model exists. The router degrades any cloud tier to
+        // on-device, so `tier` is on-device here and the transparency stays honest.
+        session = LanguageModelSession(tools: tools, instructions: instructions)
+#endif
         usedTokens = budget.estimatedTokens(instructions)
         session?.prewarm()
 #endif
@@ -408,11 +418,12 @@ public final class ConversationEngine {
             profileDelta: activeProfile.instructionDelta
         )
         let toolNames = activeProfile.restrictsToolsTo ?? ToolSelector.coreToolNames
-        researchSession = LanguageModelSession(
-            model: model(for: tier),
-            tools: buildTools(container: container, onEvent: makeEventHandler(), selecting: toolNames),
-            instructions: instructions
-        )
+        let tools = buildTools(container: container, onEvent: makeEventHandler(), selecting: toolNames)
+#if FM_PCC
+        researchSession = LanguageModelSession(model: model(for: tier), tools: tools, instructions: instructions)
+#else
+        researchSession = LanguageModelSession(tools: tools, instructions: instructions)
+#endif
         researchUsedTokens = budget.estimatedTokens(instructions)
         researchSession?.prewarm()
 #endif

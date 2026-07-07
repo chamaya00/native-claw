@@ -12,6 +12,13 @@ settings:
     DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
+    # Private Cloud Compute binding. The WWDC26 `LanguageModel` protocol and
+    # `PrivateCloudComputeLanguageModel` ship in the iOS 27 SDK (Xcode 27) — they do not
+    # exist in the iOS 26 SDK this project targets, so the code that uses them is gated on
+    # the `FM_PCC` flag and is OFF by default (default builds degrade PCC to on-device).
+    # When building with Xcode 27+, bump the deployment/SDK and uncomment the next line to
+    # bind PCC for real (ModelRouter.bind, ConversationEngine.model(for:), EvalRunner):
+    # SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) FM_PCC"
 
 # ---------------------------------------------------------------------------
 # Modular architecture (IMPLEMENTATION_PLAN §D).

@@ -186,7 +186,7 @@ struct RoutingSettingsView: View {
         } header: {
             Text("Evaluations")
         } footer: {
-            Text("Measures on-device and Private Cloud Compute on the same representative assistant tasks — extraction, classification, summarisation, reasoning — side by side, so routing is decided from data, not guesses. PCC rows run on a device with Apple Intelligence; third-party rows activate once a provider package is added.")
+            Text("Measures on-device and Private Cloud Compute on the same representative assistant tasks — extraction, classification, summarisation, reasoning — side by side, so routing is decided from data, not guesses. PCC rows run when the app is built with the iOS 27 SDK (Private Cloud Compute model); otherwise they show as pending. Third-party rows activate once a provider package is added.")
         }
     }
 
