@@ -53,6 +53,11 @@ public final class ConversationEngine {
     /// runs as a subagent that never touches the main conversation.
     public private(set) var activeProfile: ConversationProfile = .assistant
 
+    /// A test override that pins every main-chat turn to one tier so the same prompt can be
+    /// compared on-device vs Private Cloud Compute (§Phase 4). `nil` = normal policy routing.
+    /// Still subject to the privacy lock, permissions, and PCC budget — see `ModelRouter.resolve`.
+    public var forcedTier: ModelTier?
+
     public var isAvailable: Bool { availability.isAvailable }
 
     // MARK: Dependencies
@@ -243,9 +248,10 @@ public final class ConversationEngine {
         turnToolCalls = []
         lastTurnToolCalls = []
 
-        // Route the turn (§Phase 4): pick the model tier from policy + token pressure, and
-        // budget against *that* tier's window. Pure policy — safe outside the FM gate.
-        let resolution = router.resolve(task: .chat, estimatedPromptTokens: usedTokens)
+        // Route the turn (§Phase 4): pick the model tier from policy + token pressure (or the
+        // test override), and budget against *that* tier's window. Pure policy — safe outside
+        // the FM gate.
+        let resolution = router.resolve(task: .chat, estimatedPromptTokens: usedTokens, forcing: forcedTier)
         lastResponseTier = resolution.boundTier
 
 #if canImport(FoundationModels)

@@ -56,20 +56,38 @@ public final class ModelRouter {
     /// the prompt needs. Pure policy: loads `RoutingPolicy`, applies the privacy lock,
     /// permission flags, token pressure, and PCC daily budget, then binds to a model the
     /// current build can actually run.
-    public func resolve(task: TaskKind, estimatedPromptTokens: Int) -> RoutingResolution {
+    ///
+    /// `forcing` is a test override (the chat "Test routing" control): when set, it replaces
+    /// the task-kind preference and the size-escalation so the same prompt can be compared
+    /// across tiers. It is *not* a policy bypass — the privacy lock, the permission flags,
+    /// and the PCC budget still apply, so a forced tier that the policy forbids degrades and
+    /// says why, exactly like any other turn.
+    public func resolve(
+        task: TaskKind,
+        estimatedPromptTokens: Int,
+        forcing forced: ModelTier? = nil
+    ) -> RoutingResolution {
         let context = ModelContext(container)
         let policy = RoutingPolicy.load(in: context)
 
-        // 1. Desired tier from the task kind.
-        var desired: ModelTier = task.prefersReasoningTier
-            ? (ModelTier(rawValue: policy.reasoningTierRawValue) ?? .privateCloudCompute)
-            : .onDevice
+        // 1. Desired tier: an explicit test override wins over task-kind preference; otherwise
+        //    reasoning-class work prefers the configured reasoning tier and everything else
+        //    starts on-device.
+        var desired: ModelTier
+        if let forced {
+            desired = forced
+        } else {
+            desired = task.prefersReasoningTier
+                ? (ModelTier(rawValue: policy.reasoningTierRawValue) ?? .privateCloudCompute)
+                : .onDevice
+        }
 
         // 2. Escalate if the prompt simply won't fit the on-device window. The 4K ceiling
-        //    is the whole reason PCC exists (§Phase 4 rationale).
+        //    is the whole reason PCC exists (§Phase 4 rationale). Skipped when a tier is
+        //    forced — the explicit choice is respected and overflow recovery handles the rest.
         let onDeviceRoom = ModelTier.onDevice.contextSize - ContextBudget().responseHeadroom
         var escalatedForSize = false
-        if estimatedPromptTokens > onDeviceRoom, desired == .onDevice {
+        if forced == nil, estimatedPromptTokens > onDeviceRoom, desired == .onDevice {
             desired = .privateCloudCompute
             escalatedForSize = true
         }
