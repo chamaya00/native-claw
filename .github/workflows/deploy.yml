@@ -22,7 +22,9 @@ permissions:
 jobs:
   deploy:
     name: Deploy to TestFlight
-    runs-on: macos-15
+    # Xcode 27 (iOS 27 SDK) is required for the Private Cloud Compute API surface
+    # the FM_PCC build compiles; macos-26 runners carry an Xcode 27.x install.
+    runs-on: macos-26
 
     environment: testflight
 
@@ -45,23 +47,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26
+      - name: Select Xcode 27
         run: |
-          # Dynamically pick the latest Xcode 26.x installed on the runner.
-          XCODE26=$(ls /Applications/ \
-            | grep -E '^Xcode_26(\.[0-9]+)*\.app$' \
+          # Dynamically pick the latest Xcode 27.x installed on the runner.
+          XCODE27=$(ls /Applications/ \
+            | grep -E '^Xcode_27(\.[0-9]+)*\.app$' \
             | sort -t. -k1,1 -k2,2n -k3,3n -k4,4n \
             | tail -1)
 
-          if [ -z "$XCODE26" ]; then
-            echo "::error::No Xcode 26.x installation found in /Applications/"
+          if [ -z "$XCODE27" ]; then
+            echo "::error::No Xcode 27.x installation found in /Applications/"
             echo "Available Xcode installations:"
             ls /Applications/ | grep -i xcode
             exit 1
           fi
 
-          echo "Using $XCODE26"
-          sudo xcode-select -s "/Applications/$XCODE26/Contents/Developer"
+          echo "Using $XCODE27"
+          sudo xcode-select -s "/Applications/$XCODE27/Contents/Developer"
           xcodebuild -version
 
       - name: Install XcodeGen

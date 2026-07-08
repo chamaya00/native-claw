@@ -84,7 +84,7 @@ LLMChat/
 - **Persona.** Onboarding is a short conversation that produces a structured
   `Persona`; it seeds the system instructions every session.
 
-## Building (requires a Mac with Xcode 26+)
+## Building (requires a Mac with Xcode 27+)
 
 1. `brew install xcodegen`
 2. From `LLMChat/`: `xcodegen generate`
@@ -97,8 +97,9 @@ LLMChat/
 
 GitHub Actions (no Mac required for the developer):
 
-- **build.yml** — every push/PR: selects Xcode 26 (so `canImport(FoundationModels)`
-  is true), runs `xcodegen generate`, builds the **LLMChat** scheme for the
+- **build.yml** — every push/PR: selects Xcode 27 (so `canImport(FoundationModels)`
+  is true and the iOS 27 SDK's Private Cloud Compute API is compiled under
+  `FM_PCC`), runs `xcodegen generate`, builds the **LLMChat** scheme for the
   simulator (Debug), then archives it for a generic iOS **device** in **Release**
   (unsigned). The Release archive is a cheap proxy for the deploy: it catches
   Release-only compile/archive failures on the PR instead of letting them surface
@@ -114,6 +115,6 @@ need to be committed by hand.
 
 ## Requirements
 
-- Xcode 26+ / iOS 26 SDK (Foundation Models WWDC25 APIs)
-- iOS 26 device with Apple Intelligence enabled
+- Xcode 27+ / iOS 27 SDK (Foundation Models WWDC25 APIs + Private Cloud Compute)
+- iOS 27 device with Apple Intelligence enabled
 - Apple Developer account (device builds + TestFlight)
