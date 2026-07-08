@@ -1,0 +1,7 @@
+# Runtime marker written by the fastlane `beta` lane when App Store Connect
+# reports an account-level agreement block. Consumed by the deploy workflow's
+# status step; never meant to be committed.
+.agreement_blocked
+
+# Fastlane build output
+build/

@@ -192,6 +192,19 @@ platform :ios do
       UI.error("     portal) and accept any pending agreement.")
       UI.error("  3. Re-run this workflow.")
       UI.error("──────────────────────────────────────────────────────────────")
+
+      # Drop a marker the deploy workflow can read so the resulting commit
+      # status names this account-level block explicitly, instead of the
+      # generic "deploy failed" text that reads like a code/build breakage.
+      # (__dir__ is LLMChat/fastlane; the marker lands at LLMChat/.agreement_blocked.)
+      begin
+        File.write(
+          File.expand_path("../.agreement_blocked", __dir__),
+          "App Store Connect agreement missing or expired\n"
+        )
+      rescue StandardError => e
+        UI.error("(could not write agreement-block marker: #{e.message})")
+      end
     end
   end
 end

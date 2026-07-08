@@ -106,6 +106,13 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then
             STATE="success"
             DESCRIPTION="TestFlight deploy succeeded"
+          elif [ -f LLMChat/.agreement_blocked ]; then
+            # Account-level block (expired/unsigned App Store agreement), not a
+            # code failure. Name it explicitly so a human — or the orchestrating
+            # session woken by this status — knows to accept the agreement rather
+            # than chase a nonexistent build bug.
+            STATE="failure"
+            DESCRIPTION="Blocked: accept the App Store agreement in App Store Connect (account-level, not a code issue)"
           else
             STATE="failure"
             DESCRIPTION="TestFlight deploy failed — see run logs"
