@@ -84,22 +84,39 @@ LLMChat/
 - **Persona.** Onboarding is a short conversation that produces a structured
   `Persona`; it seeds the system instructions every session.
 
-## Building (requires a Mac with Xcode 27+)
+## Building (requires a Mac with Xcode 26+)
 
 1. `brew install xcodegen`
-2. From `LLMChat/`: `xcodegen generate`
+2. From `LLMChat/`: `bundle exec fastlane generate_project` (or `xcodegen generate`
+   with `LLMCHAT_DEPLOYMENT_TARGET=26.0`)
 3. Open `LLMChat.xcodeproj`, build the **LLMChat** scheme.
 4. Run on a physical device with Apple Intelligence enabled. On the simulator the
    app launches and shows the graceful "Apple Intelligence required" fallback
    (on-device inference needs real hardware).
 
+### Private Cloud Compute (Xcode 27+)
+
+Private Cloud Compute binds to `PrivateCloudComputeLanguageModel`, which only ships
+in the **iOS 27 SDK (Xcode 27)**. It is therefore a build-time opt-in: the default
+build targets iOS 26 with PCC degrading to on-device (so it also builds on Xcode 26
+and in CI). On an Xcode 27 toolchain, generate with the toggle to bind PCC for real:
+
+```sh
+FM_PCC=1 bundle exec fastlane generate_project   # → iOS 27 SDK + FM_PCC
+```
+
+Then reasoning/briefing turns, prompts that overflow the 4K on-device window, or a
+forced tier route to real Private Cloud Compute, and the eval harness reports live
+on-device-vs-PCC rows instead of "pending". Without the toggle, `FM_PCC` stays off
+and every tier resolves on-device (the router flags the degradation).
+
 ## CI/CD
 
 GitHub Actions (no Mac required for the developer):
 
-- **build.yml** — every push/PR: selects Xcode 27 (so `canImport(FoundationModels)`
-  is true and the iOS 27 SDK's Private Cloud Compute API is compiled under
-  `FM_PCC`), runs `xcodegen generate`, builds the **LLMChat** scheme for the
+- **build.yml** — every push/PR: selects Xcode 26 (so `canImport(FoundationModels)`
+  is true), runs `xcodegen generate` (PCC off — the FM_PCC path needs the Xcode 27
+  SDK), builds the **LLMChat** scheme for the
   simulator (Debug), then archives it for a generic iOS **device** in **Release**
   (unsigned). The Release archive is a cheap proxy for the deploy: it catches
   Release-only compile/archive failures on the PR instead of letting them surface
@@ -115,6 +132,7 @@ need to be committed by hand.
 
 ## Requirements
 
-- Xcode 27+ / iOS 27 SDK (Foundation Models WWDC25 APIs + Private Cloud Compute)
-- iOS 27 device with Apple Intelligence enabled
+- Xcode 26+ / iOS 26 SDK (Foundation Models WWDC25 APIs); Xcode 27 / iOS 27 SDK to
+  build the Private Cloud Compute path (`FM_PCC`)
+- iOS 26 device with Apple Intelligence enabled (iOS 27 for Private Cloud Compute)
 - Apple Developer account (device builds + TestFlight)
