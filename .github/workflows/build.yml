@@ -10,7 +10,10 @@ jobs:
   build:
     name: Build LLMChat (Xcode 26 / FoundationModels SDK)
     # macos-15 runners ship with Xcode 16 by default; Xcode 26 must be
-    # pre-installed or selected via the path below.
+    # pre-installed or selected via the path below. The default build leaves
+    # Private Cloud Compute off (FM_PCC toggle in the Fastfile), so Xcode 26 is
+    # sufficient — the FM_PCC path needs the iOS 27 SDK and is validated on an
+    # Xcode 27 toolchain, not here.
     # Check available versions at:
     # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md
     runs-on: macos-15

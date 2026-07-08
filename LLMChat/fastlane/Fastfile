@@ -1,5 +1,23 @@
 default_platform(:ios)
 
+# ─────────────────────────────────────────────────────────────
+# Private Cloud Compute build toggle.
+#
+# `PrivateCloudComputeLanguageModel` (WWDC26 `LanguageModel` protocol) only
+# exists in the iOS 27 SDK, so the FM_PCC code path can only compile under
+# Xcode 27. Default builds (Xcode 26, incl. hosted CI) must therefore leave it
+# off — PCC then degrades to on-device, exactly as before.
+#
+# Set FM_PCC=1 (on an Xcode 27 toolchain) to bind PCC for real. This fills the
+# two XcodeGen substitution vars project.yml reads, unless they're already set
+# in the environment (which then wins).
+def configure_pcc_env
+  pcc_on = %w[1 true yes on].include?(ENV["FM_PCC"].to_s.strip.downcase)
+  ENV["LLMCHAT_DEPLOYMENT_TARGET"] ||= pcc_on ? "27.0" : "26.0"
+  ENV["LLMCHAT_SWIFT_FLAGS"] ||= pcc_on ? "FM_PCC" : ""
+  UI.message("PCC build: #{pcc_on ? 'ON — iOS 27 SDK, FM_PCC' : 'OFF — iOS 26, PCC degrades to on-device'}")
+end
+
 platform :ios do
 
   # ───────────────────────────────────────────
@@ -7,6 +25,7 @@ platform :ios do
   # ───────────────────────────────────────────
   desc "Generate Xcode project using XcodeGen"
   lane :generate_project do
+    configure_pcc_env
     Dir.chdir("..") do
       sh("xcodegen generate --spec project.yml")
     end

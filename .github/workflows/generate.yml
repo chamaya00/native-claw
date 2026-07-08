@@ -18,6 +18,10 @@ jobs:
     env:
       # Default values for XcodeGen env var expansion in project.yml
       APP_IDENTIFIER: com.charlesamaya.llmchat
+      # Private Cloud Compute is off in the committed project (iOS 26); the FM_PCC
+      # build (iOS 27) is generated on demand, never committed. See the Fastfile toggle.
+      LLMCHAT_DEPLOYMENT_TARGET: "26.0"
+      LLMCHAT_SWIFT_FLAGS: ""
 
     steps:
       - name: Checkout repository
