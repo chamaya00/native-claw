@@ -29,6 +29,14 @@ final class ChatViewModel {
     /// turns run in an isolated context and are not saved to the main conversation.
     var isResearchMode: Bool = false
 
+    /// Test override that pins main-chat turns to one tier so the same prompt can be compared
+    /// on-device vs Private Cloud Compute (§Phase 4). `nil` = normal policy routing. The tier
+    /// chip under each reply shows where the turn actually ran.
+    var forcedTier: ModelTier? {
+        get { engine.forcedTier }
+        set { engine.forcedTier = newValue }
+    }
+
     // MARK: - Voice (Phase 7)
 
     /// On-device dictation (SpeechAnalyzer) and TTS (AVSpeechSynthesizer). All processing stays

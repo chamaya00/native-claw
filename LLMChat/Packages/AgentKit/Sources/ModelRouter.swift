@@ -6,9 +6,10 @@ import MemoryKit
 /// The outcome of routing one turn (§Phase 4). Separates *intent* from *reality*:
 ///   • `policyTier` — what the user's `RoutingPolicy`, the task kind, and the token
 ///     pressure selected. This is the real, fully-tested decision.
-///   • `boundTier`  — the tier that actually backs the session in *this* build. The
-///     concrete Private Cloud Compute / third-party model bindings are documented seams
-///     that can't be verified without a device, so they degrade to on-device for now.
+///   • `boundTier`  — the tier that actually backs the session in *this* build. On-device is
+///     always concrete; Private Cloud Compute is a real binding only in an iOS 27 SDK build
+///     (`-D FM_PCC`) and otherwise degrades to on-device; the third-party tier still awaits a
+///     provider SPM package and degrades to on-device.
 /// `degraded` is true when reality couldn't meet intent, and `reason` explains why — both
 /// surface in the routing settings so the user always knows where their data went.
 public struct RoutingResolution: Sendable, Equatable {
@@ -33,11 +34,12 @@ public struct RoutingResolution: Sendable, Equatable {
 /// keep, §deviation 4).
 ///
 /// **Binding seam.** Resolving *which* tier should run is real and tested here. *Binding*
-/// a non-on-device tier to a concrete FoundationModels model (`PrivateCloudComputeLanguageModel`,
-/// a third-party provider via SPM) is a WWDC26 surface that can't be compile-verified
-/// without a device, so `bind(_:)` currently degrades any cloud tier to on-device and
-/// flags it. The day the binding lands it's a one-function change; the policy, metering,
-/// and transparency around it already ship.
+/// a tier to a concrete FoundationModels model happens in `ConversationEngine` via the
+/// WWDC26 `LanguageModel` protocol (`SystemLanguageModel.default` ↔ `PrivateCloudComputeLanguageModel`).
+/// That protocol ships in the iOS 27 SDK, so PCC binds for real only in an `-D FM_PCC` build;
+/// the default (iOS 26 SDK) build degrades PCC to on-device. Third-party always degrades until
+/// a provider SPM package is added. Either way `bind(_:)` flags the degradation, and the
+/// policy, metering, and transparency around every tier already ship.
 @Observable
 @MainActor
 public final class ModelRouter {
@@ -56,20 +58,38 @@ public final class ModelRouter {
     /// the prompt needs. Pure policy: loads `RoutingPolicy`, applies the privacy lock,
     /// permission flags, token pressure, and PCC daily budget, then binds to a model the
     /// current build can actually run.
-    public func resolve(task: TaskKind, estimatedPromptTokens: Int) -> RoutingResolution {
+    ///
+    /// `forcing` is a test override (the chat "Test routing" control): when set, it replaces
+    /// the task-kind preference and the size-escalation so the same prompt can be compared
+    /// across tiers. It is *not* a policy bypass — the privacy lock, the permission flags,
+    /// and the PCC budget still apply, so a forced tier that the policy forbids degrades and
+    /// says why, exactly like any other turn.
+    public func resolve(
+        task: TaskKind,
+        estimatedPromptTokens: Int,
+        forcing forced: ModelTier? = nil
+    ) -> RoutingResolution {
         let context = ModelContext(container)
         let policy = RoutingPolicy.load(in: context)
 
-        // 1. Desired tier from the task kind.
-        var desired: ModelTier = task.prefersReasoningTier
-            ? (ModelTier(rawValue: policy.reasoningTierRawValue) ?? .privateCloudCompute)
-            : .onDevice
+        // 1. Desired tier: an explicit test override wins over task-kind preference; otherwise
+        //    reasoning-class work prefers the configured reasoning tier and everything else
+        //    starts on-device.
+        var desired: ModelTier
+        if let forced {
+            desired = forced
+        } else {
+            desired = task.prefersReasoningTier
+                ? (ModelTier(rawValue: policy.reasoningTierRawValue) ?? .privateCloudCompute)
+                : .onDevice
+        }
 
         // 2. Escalate if the prompt simply won't fit the on-device window. The 4K ceiling
-        //    is the whole reason PCC exists (§Phase 4 rationale).
+        //    is the whole reason PCC exists (§Phase 4 rationale). Skipped when a tier is
+        //    forced — the explicit choice is respected and overflow recovery handles the rest.
         let onDeviceRoom = ModelTier.onDevice.contextSize - ContextBudget().responseHeadroom
         var escalatedForSize = false
-        if estimatedPromptTokens > onDeviceRoom, desired == .onDevice {
+        if forced == nil, estimatedPromptTokens > onDeviceRoom, desired == .onDevice {
             desired = .privateCloudCompute
             escalatedForSize = true
         }
@@ -148,14 +168,21 @@ public final class ModelRouter {
         return (.onDevice, "\(blocked) — kept on-device.")
     }
 
-    /// Bind a policy tier to a model the current build can run. On-device is concrete;
-    /// cloud tiers are the documented seam (see type doc) and degrade to on-device.
+    /// Bind a policy tier to a model the current build can run. On-device is always concrete.
+    /// Private Cloud Compute is a real binding *only when built against the iOS 27 SDK with
+    /// `-D FM_PCC`* — `PrivateCloudComputeLanguageModel` doesn't exist in the iOS 26 SDK, so
+    /// the default build degrades PCC to on-device and says so, keeping the transparency chip
+    /// honest. Third-party still awaits a provider SPM package and always degrades for now.
     private func bind(_ tier: ModelTier) -> (ModelTier, String?) {
         switch tier {
         case .onDevice:
             return (.onDevice, nil)
         case .privateCloudCompute:
-            return (.onDevice, "Private Cloud Compute is selected by policy; its model binding is pending device provisioning, so this turn ran on-device.")
+#if FM_PCC
+            return (.privateCloudCompute, nil)
+#else
+            return (.onDevice, "Private Cloud Compute needs an iOS 27 SDK build (FM_PCC); this turn ran on-device.")
+#endif
         case .thirdParty:
             return (.onDevice, "Third-party provider binding is pending; this turn ran on-device.")
         }

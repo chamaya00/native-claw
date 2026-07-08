@@ -30,6 +30,7 @@ struct ChatView: View {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     if viewModel.isResearchMode { researchBanner }
+                    if let tier = viewModel.forcedTier { forcedTierBanner(tier) }
                     messageList
                     Divider()
                     inputBar
@@ -312,6 +313,24 @@ struct ChatView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
+    // MARK: - Forced-tier Banner (routing test)
+
+    private func forcedTierBanner(_ tier: ModelTier) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "flask").foregroundStyle(.blue)
+            Text("Testing routing — every turn is pinned to \(tier.displayName).")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Auto") { viewModel.forcedTier = nil }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.blue)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.blue.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
     // MARK: - Error Banner
 
     private func errorBanner(message: String) -> some View {
@@ -353,6 +372,19 @@ struct ChatView: View {
                     set: { _ in viewModel.toggleVoiceMode() }
                 )) {
                     Label("Speak replies", systemImage: "speaker.wave.2")
+                }
+                Picker(selection: Binding(
+                    get: { viewModel.forcedTier },
+                    set: { viewModel.forcedTier = $0 }
+                )) {
+                    Label("Auto (policy)", systemImage: "arrow.triangle.branch")
+                        .tag(ModelTier?.none)
+                    Label(ModelTier.onDevice.displayName, systemImage: ModelTier.onDevice.systemImage)
+                        .tag(ModelTier?.some(.onDevice))
+                    Label(ModelTier.privateCloudCompute.displayName, systemImage: ModelTier.privateCloudCompute.systemImage)
+                        .tag(ModelTier?.some(.privateCloudCompute))
+                } label: {
+                    Label("Test routing", systemImage: "flask")
                 }
                 Divider()
                 Button("Memory", systemImage: "brain") { showMemoryBrowser = true }

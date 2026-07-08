@@ -53,6 +53,11 @@ public final class ConversationEngine {
     /// runs as a subagent that never touches the main conversation.
     public private(set) var activeProfile: ConversationProfile = .assistant
 
+    /// A test override that pins every main-chat turn to one tier so the same prompt can be
+    /// compared on-device vs Private Cloud Compute (§Phase 4). `nil` = normal policy routing.
+    /// Still subject to the privacy lock, permissions, and PCC budget — see `ModelRouter.resolve`.
+    public var forcedTier: ModelTier?
+
     public var isAvailable: Bool { availability.isAvailable }
 
     // MARK: Dependencies
@@ -87,12 +92,37 @@ public final class ConversationEngine {
     private var researchUsedTokens = 0
     private var researchBaton: String?
 
+    /// The tier the live `session` is currently bound to. The session is rebuilt (re-seated
+    /// with a condensed summary) whenever a routed turn resolves to a different tier, so the
+    /// model that answers always matches `lastResponseTier` (§Phase 4). Mirrored for the
+    /// research subagent by `researchSessionTier`.
+    private var sessionTier: ModelTier = .onDevice
+    private var researchSessionTier: ModelTier = .onDevice
+
 #if canImport(FoundationModels)
     private var session: LanguageModelSession?
     private var onboardingSession: LanguageModelSession?
     /// The isolated subagent session for a context-isolating profile (e.g. `.research`).
     /// Built on demand by `activateProfile` and torn down on return to `.assistant`.
     private var researchSession: LanguageModelSession?
+
+    /// Map a routed tier to the concrete model that backs the session (WWDC26 `LanguageModel`
+    /// protocol). On-device and Private Cloud Compute are real bindings — PCC opens the 32K
+    /// reasoning window with no API keys or auth. Third-party still awaits a provider SPM
+    /// package, so it falls back to on-device (the router already flags that as degraded).
+    ///
+    /// Gated on `FM_PCC`: `LanguageModel`/`PrivateCloudComputeLanguageModel` ship in the
+    /// iOS 27 SDK (Xcode 27), not the iOS 26 SDK the default build compiles against, so this
+    /// is only compiled when the build opts in with `-D FM_PCC`. See `buildSession`.
+#if FM_PCC
+    private func model(for tier: ModelTier) -> any LanguageModel {
+        switch tier {
+        case .onDevice: return SystemLanguageModel.default
+        case .privateCloudCompute: return PrivateCloudComputeLanguageModel()
+        case .thirdParty: return SystemLanguageModel.default
+        }
+    }
+#endif
 #endif
 
     public init(container: ModelContainer) {
@@ -158,7 +188,8 @@ public final class ConversationEngine {
 #endif
     }
 
-    private func buildSession(condensedSummary: String?) {
+    private func buildSession(condensedSummary: String?, tier: ModelTier = .onDevice) {
+        sessionTier = tier
 #if canImport(FoundationModels)
         let context = ModelContext(container)
         let persona = personaStore.currentPersona()
@@ -170,14 +201,19 @@ public final class ConversationEngine {
             stylePrefs: stylePrefs,
             condensedSummary: condensedSummary
         )
-        session = LanguageModelSession(
-            tools: buildTools(
-                container: container,
-                onEvent: makeEventHandler(),
-                selecting: attachedToolNames
-            ),
-            instructions: instructions
+        let tools = buildTools(
+            container: container,
+            onEvent: makeEventHandler(),
+            selecting: attachedToolNames
         )
+#if FM_PCC
+        // Real per-tier binding (iOS 27 SDK): on-device ↔ Private Cloud Compute.
+        session = LanguageModelSession(model: model(for: tier), tools: tools, instructions: instructions)
+#else
+        // iOS 26 SDK: only the on-device model exists. The router degrades any cloud tier to
+        // on-device, so `tier` is on-device here and the transparency stays honest.
+        session = LanguageModelSession(tools: tools, instructions: instructions)
+#endif
         usedTokens = budget.estimatedTokens(instructions)
         session?.prewarm()
 #endif
@@ -222,9 +258,10 @@ public final class ConversationEngine {
         turnToolCalls = []
         lastTurnToolCalls = []
 
-        // Route the turn (§Phase 4): pick the model tier from policy + token pressure, and
-        // budget against *that* tier's window. Pure policy — safe outside the FM gate.
-        let resolution = router.resolve(task: .chat, estimatedPromptTokens: usedTokens)
+        // Route the turn (§Phase 4): pick the model tier from policy + token pressure (or the
+        // test override), and budget against *that* tier's window. Pure policy — safe outside
+        // the FM gate.
+        let resolution = router.resolve(task: .chat, estimatedPromptTokens: usedTokens, forcing: forcedTier)
         lastResponseTier = resolution.boundTier
 
 #if canImport(FoundationModels)
@@ -236,12 +273,16 @@ public final class ConversationEngine {
             ToolSelector.selectedToolNames(for: text, hasImage: hasImage)
         )
         let toolsChanged = needed != attachedToolNames
+        // The router may have escalated this turn to a different tier than the live session
+        // is bound to (e.g. on-device → PCC). Re-seat onto the resolved tier's model so the
+        // turn actually runs where routing said it would (§Phase 4).
+        let tierChanged = resolution.boundTier != sessionTier
 
         // Proactively summarise before we risk overflowing the window. Re-seating also
-        // rebuilds the session, so fold a needed tool-set change into the same rebuild.
-        if activeBudget.shouldSummarize(usedTokens: usedTokens) || toolsChanged {
+        // rebuilds the session, so fold a needed tool-set or tier change into the same rebuild.
+        if activeBudget.shouldSummarize(usedTokens: usedTokens) || toolsChanged || tierChanged {
             attachedToolNames = needed
-            await reseatWithSummary()
+            await reseatWithSummary(tier: resolution.boundTier)
         }
 
         guard let session else { throw AgentError.sessionNotInitialized }
@@ -297,9 +338,11 @@ public final class ConversationEngine {
         }
     }
 
-    private func reseatWithSummary() async {
+    /// Re-seat the main session with a condensed summary. Preserves the current tier unless
+    /// the caller asks for a different one (a routed escalation/de-escalation).
+    private func reseatWithSummary(tier: ModelTier? = nil) async {
         let summary = (try? await budget.summarize(messages: fetchRecentMessages(limit: 20))) ?? ""
-        buildSession(condensedSummary: summary.isEmpty ? nil : summary)
+        buildSession(condensedSummary: summary.isEmpty ? nil : summary, tier: tier ?? sessionTier)
     }
 
     /// Periodically propose routines from recurring patterns (§Phase 5). Like curation, this
@@ -359,7 +402,8 @@ public final class ConversationEngine {
         }
     }
 
-    private func buildResearchSession(baton: String?) {
+    private func buildResearchSession(baton: String?, tier: ModelTier = .onDevice) {
+        researchSessionTier = tier
 #if canImport(FoundationModels)
         let context = ModelContext(container)
         let persona = personaStore.currentPersona()
@@ -374,10 +418,12 @@ public final class ConversationEngine {
             profileDelta: activeProfile.instructionDelta
         )
         let toolNames = activeProfile.restrictsToolsTo ?? ToolSelector.coreToolNames
-        researchSession = LanguageModelSession(
-            tools: buildTools(container: container, onEvent: makeEventHandler(), selecting: toolNames),
-            instructions: instructions
-        )
+        let tools = buildTools(container: container, onEvent: makeEventHandler(), selecting: toolNames)
+#if FM_PCC
+        researchSession = LanguageModelSession(model: model(for: tier), tools: tools, instructions: instructions)
+#else
+        researchSession = LanguageModelSession(tools: tools, instructions: instructions)
+#endif
         researchUsedTokens = budget.estimatedTokens(instructions)
         researchSession?.prewarm()
 #endif
@@ -399,10 +445,13 @@ public final class ConversationEngine {
 
 #if canImport(FoundationModels)
         let activeBudget = ContextBudget(contextSize: resolution.contextSize)
-        if researchSession == nil || activeBudget.shouldSummarize(usedTokens: researchUsedTokens) {
-            // Rebuild the subagent from the same baton, dropping its accumulated transcript.
+        if researchSession == nil
+            || activeBudget.shouldSummarize(usedTokens: researchUsedTokens)
+            || resolution.boundTier != researchSessionTier {
+            // Rebuild the subagent from the same baton, dropping its accumulated transcript,
+            // and bind it to the tier this turn routed to (research prefers PCC, §Phase 4/6).
             researchUsedTokens = 0
-            buildResearchSession(baton: researchBaton)
+            buildResearchSession(baton: researchBaton, tier: resolution.boundTier)
         }
 
         guard let researchSession else { throw AgentError.sessionNotInitialized }
@@ -411,7 +460,7 @@ public final class ConversationEngine {
             finalText = try await stream(session: researchSession, text: text, continuation: continuation)
         } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
             researchUsedTokens = 0
-            buildResearchSession(baton: researchBaton)
+            buildResearchSession(baton: researchBaton, tier: resolution.boundTier)
             guard let retry = self.researchSession else { throw AgentError.sessionNotInitialized }
             finalText = try await stream(session: retry, text: text, continuation: continuation)
         }
